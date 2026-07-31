@@ -1,0 +1,4 @@
+interface:
+  display_name: "Testing"
+  short_description: "Add focused tests and run the right FlowBit V2 checks."
+  default_prompt: "Use the FlowBit V2 testing skill to decide what tests should be added or run for this change, then report the checks and any blockers."
