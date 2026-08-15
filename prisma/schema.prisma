@@ -1,0 +1,147 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// Authentication Tables
+// ============================================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String    @unique
+  passwordHash  String
+  emailVerified Boolean   @default(false)
+  avatar        String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  refreshTokens      RefreshToken[]
+  emailVerifications EmailVerification[]
+  passwordResets     PasswordReset[]
+  socialAccounts     SocialAccount[]
+  posts              Post[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id          String   @id @default(cuid())
+  userId      String
+  tokenHash   String   @unique
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  revokedAt   DateTime?
+  ipAddress   String?
+  userAgent   String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model EmailVerification {
+  id        String   @id @default(cuid())
+  userId    String
+  otp       String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("email_verifications")
+}
+
+model PasswordReset {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("password_resets")
+}
+
+// ============================================================
+// Social Accounts
+// ============================================================
+
+model SocialAccount {
+  id               String   @id @default(cuid())
+  userId           String
+  provider         String
+  providerUserId   String
+  providerUsername String?
+  providerName     String?
+  providerAvatar   String?
+  accessToken      String
+  refreshToken     String?
+  expiresAt        DateTime?
+  scopes           String?
+  status           String   @default("active")
+  connectedAt      DateTime @default(now())
+  metadata         Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  posts Post[]
+
+  @@unique([userId, provider, providerUserId])
+  @@index([userId])
+  @@index([status])
+  @@map("social_accounts")
+}
+
+// ============================================================
+// Posts
+// ============================================================
+
+model Post {
+  id              String    @id @default(cuid())
+  userId          String
+  socialAccountId String?
+  content         String
+  platform        String
+  status          String    @default("draft")
+  scheduledAt     DateTime?
+  publishedAt     DateTime?
+  platformPostId  String?
+  platformPostUrl String?
+  mediaUrls       String[]  @default([])
+  hashtags        String[]  @default([])
+  aiGenerated     Boolean   @default(false)
+  aiModel         String?
+  aiPrompt        String?
+  retryCount      Int       @default(0)
+  errorMessage    String?
+  metadata        Json?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  socialAccount SocialAccount? @relation(fields: [socialAccountId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([userId, status])
+  @@index([scheduledAt])
+  @@map("posts")
+}

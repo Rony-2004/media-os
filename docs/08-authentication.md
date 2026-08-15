@@ -1,358 +1,359 @@
-# Authentication & Authorization
+# Authentication
 
 ## Overview
 
-AI Social OS uses **Better Auth** as its authentication framework, providing session-based authentication with JWT tokens for API access. The system supports email/password registration and OAuth providers (Google, GitHub) for login, plus LinkedIn OAuth specifically for platform integration.
+AI Social OS uses **Better Auth** as the authentication framework. Authentication is completely separate from social account connections. Users authenticate with ConnectUs (AI Social OS), and then connect social platforms as a secondary step.
+
+**Key principle**: LinkedIn is NOT an authentication provider. LinkedIn is a connected social account. Users always authenticate with ConnectUs first.
 
 ---
 
-## Authentication Strategy
+## Authentication Providers
 
-### Session-Based Auth (Primary)
-- User logs in → server creates session → session ID stored in HTTP-only cookie
-- Every request sends session cookie → server validates session → identifies user
-- Sessions stored in Redis for fast lookup with PostgreSQL as persistent backup
+### Phase 1
+- Email + Password
 
-### JWT Tokens (API Access)
-- For programmatic API access (future API tier)
-- Short-lived access tokens (15 minutes)
-- Long-lived refresh tokens (7 days)
-- Stored securely, never exposed to client-side JavaScript
+### Future
+- Google Login
+- GitHub Login
+- Apple Login
+- Microsoft Login
 
 ---
 
-## Registration Flow
+## Better Auth Integration
 
-### Email/Password Registration
+### How Better Auth Works with Express
 
-```
-1. Client sends POST /api/auth/register
-   Body: { email, password, name }
+Better Auth provides a complete authentication solution that integrates with our Express backend:
 
-2. Server validates:
-   - Email format (Zod)
-   - Password strength (min 8 chars, 1 uppercase, 1 number)
-   - Email not already registered
+1. **Server-side**: Better Auth instance created with database adapter (Prisma)
+2. **API handler**: Better Auth handles `/api/auth/*` routes
+3. **Middleware**: Auth middleware extracts session from request
+4. **Client-side**: Better Auth client hooks for React
 
-3. Server creates user:
-   - Hash password with bcrypt (12 rounds)
-   - Store user in database
-   - Generate email verification token (crypto.randomBytes(32))
-   - Store hashed token in email_verification_tokens table
+### Better Auth Configuration
 
-4. Send verification email:
-   - Link: {APP_URL}/verify-email?token={raw_token}
-   - Token expires in 24 hours
+```typescript
+// Conceptual configuration
+import { betterAuth } from 'better-auth';
+import { prismaAdapter } from 'better-auth/adapters/prisma';
 
-5. Return success response (user can log in but has limited access until verified)
-```
-
-### Email Verification
-
-```
-1. User clicks verification link
-2. Client sends POST /api/auth/verify-email
-   Body: { token }
-
-3. Server validates:
-   - Hash incoming token
-   - Find matching record in email_verification_tokens
-   - Check not expired
-   - Check not already used
-
-4. Server updates:
-   - Set user.email_verified = true
-   - Set user.email_verified_at = now()
-   - Mark token as used
-
-5. Redirect to dashboard with success message
+const auth = betterAuth({
+  database: prismaAdapter(prisma),
+  emailAndPassword: {
+    enabled: true,
+    requireEmailVerification: true
+  },
+  session: {
+    expiresIn: 60 * 60 * 24 * 7, // 7 days
+    updateAge: 60 * 60 * 24 // 1 day (refresh threshold)
+  }
+});
 ```
 
-### OAuth Registration (Google/GitHub)
+### Sessions
 
+- Better Auth manages sessions automatically
+- Sessions stored in database (via Prisma adapter)
+- Session token sent as HTTP-only cookie
+- Session validated on every authenticated request
+
+### Access Tokens & Refresh Tokens
+
+- Better Auth handles token lifecycle
+- Access token: short-lived, used for API requests
+- Refresh token: long-lived, used to get new access tokens
+- Tokens stored as HTTP-only, Secure, SameSite=Lax cookies
+- Token rotation on refresh (old refresh token invalidated)
+
+### Cookies
+
+- `better-auth.session_token`: session cookie
+- HTTP-only: true (not accessible via JavaScript)
+- Secure: true in production (HTTPS only)
+- SameSite: Lax (CSRF protection)
+- Path: /
+
+### Middleware
+
+```typescript
+// Auth middleware for protected routes
+async function authMiddleware(req, res, next) {
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session) {
+    return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Not authenticated' } });
+  }
+  req.user = session.user;
+  req.session = session.session;
+  next();
+}
 ```
-1. Client redirects to GET /api/auth/oauth/{provider}
-2. Server redirects to provider's authorization URL with:
-   - client_id
-   - redirect_uri
-   - scope
-   - state (CSRF token stored in session)
 
-3. User authorizes on provider's site
+### Protected Routes
 
-4. Provider redirects to callback URL with code
+```typescript
+// Apply auth middleware to protected routes
+router.use('/api/posts', authMiddleware, postsRouter);
+router.use('/api/social-accounts', authMiddleware, socialAccountsRouter);
+router.use('/api/ai', authMiddleware, aiRouter);
+```
 
-5. Server handles callback:
-   - Verify state matches (CSRF protection)
-   - Exchange code for tokens
-   - Fetch user profile from provider
-   - Check if email already exists:
-     - Yes: link OAuth account to existing user
-     - No: create new user (email_verified = true for OAuth)
-   - Create session
+### Database Tables (Better Auth managed)
 
-6. Redirect to dashboard
+Better Auth creates and manages these tables:
+
+- **user**: id, name, email, emailVerified, image, createdAt, updatedAt
+- **session**: id, expiresAt, token, createdAt, updatedAt, ipAddress, userAgent, userId
+- **account**: id, accountId, providerId, userId, accessToken, refreshToken, idToken, accessTokenExpiresAt, refreshTokenExpiresAt, scope, password, createdAt, updatedAt
+- **verification**: id, identifier, value, expiresAt, createdAt, updatedAt
+
+### Client Hooks (Frontend)
+
+```typescript
+// Better Auth React client
+import { createAuthClient } from 'better-auth/react';
+
+const authClient = createAuthClient({
+  baseURL: process.env.NEXT_PUBLIC_API_URL
+});
+
+// Usage in components
+const { data: session, isPending } = authClient.useSession();
+```
+
+### Server Hooks (Backend)
+
+```typescript
+// Hooks for custom logic on auth events
+const auth = betterAuth({
+  // ...
+  hooks: {
+    after: [
+      {
+        matcher: (context) => context.path === '/sign-up',
+        handler: async (ctx) => {
+          // Custom logic after registration
+          // e.g., create default user settings, send welcome email
+        }
+      }
+    ]
+  }
+});
 ```
 
 ---
 
-## Login Flow
+## Email + Password Authentication
 
-### Email/Password Login
-
-```
-1. Client sends POST /api/auth/login
-   Body: { email, password, rememberMe? }
-
-2. Server validates:
-   - Find user by email
-   - Compare password hash (bcrypt.compare)
-   - Check account not deleted/banned
-
-3. Rate limiting:
-   - 5 failed attempts per email per 15 minutes
-   - After 5 failures: account locked for 15 minutes
-   - Log all failed attempts
-
-4. On success:
-   - Create session in Redis + database
-   - Set HTTP-only cookie with session ID
-   - Cookie maxAge: 24h (default) or 30 days (rememberMe)
-   - Return user profile data
-
-5. On failure:
-   - Generic error: "Invalid email or password"
-   - Never reveal whether email exists
-```
-
-### OAuth Login
+### Register
 
 ```
-Same flow as OAuth registration.
-If user already exists with that OAuth provider linked, just create session.
-If email exists but OAuth not linked, prompt to link accounts.
+POST /api/auth/sign-up/email
+
+Request Body:
+{
+  "name": "John Doe",
+  "email": "john@example.com",
+  "password": "SecurePass123"
+}
+
+Flow:
+1. Validate input (name, email format, password strength)
+2. Check email not already registered
+3. Hash password (Better Auth handles this)
+4. Create user record
+5. Generate 6-digit OTP for email verification
+6. Store OTP (expires in 10 minutes)
+7. Send OTP via email (or print to terminal in dev mode)
+8. Return success (user created, needs verification)
+```
+
+### Login
+
+```
+POST /api/auth/sign-in/email
+
+Request Body:
+{
+  "email": "john@example.com",
+  "password": "SecurePass123"
+}
+
+Flow:
+1. Validate credentials
+2. Check email is verified
+3. Create session
+4. Set session cookie
+5. Return user data + session
+```
+
+### Logout
+
+```
+POST /api/auth/sign-out
+
+Flow:
+1. Invalidate session
+2. Clear session cookie
+3. Return success
+```
+
+### Forgot Password
+
+```
+POST /api/auth/forget-password
+
+Request Body:
+{
+  "email": "john@example.com"
+}
+
+Flow:
+1. Find user by email
+2. Generate password reset token
+3. Send reset link via email (or print in dev mode)
+4. Return success (always, even if email not found)
+```
+
+### Reset Password
+
+```
+POST /api/auth/reset-password
+
+Request Body:
+{
+  "token": "reset-token-from-email",
+  "newPassword": "NewSecurePass456"
+}
+
+Flow:
+1. Validate token (not expired, not used)
+2. Validate new password strength
+3. Update password hash
+4. Invalidate all existing sessions
+5. Return success
+```
+
+---
+
+## Email Verification (OTP)
+
+### Production Mode (Nodemailer)
+
+```
+Flow:
+1. User registers
+2. Generate 6-digit OTP
+3. Store OTP in database (expires in 10 minutes)
+4. Send email via Nodemailer with OTP
+5. User enters OTP in frontend
+6. Backend verifies OTP
+7. Mark email as verified
+8. User can now login
+```
+
+### Development Mode (No SMTP Required)
+
+Until SMTP is configured, development mode provides a frictionless workflow:
+
+```
+Flow:
+1. User registers
+2. Generate 6-digit OTP
+3. Store OTP in database
+4. Print OTP to terminal console: "[DEV] OTP for john@example.com: 123456"
+5. Return OTP in API response (ONLY in development mode)
+6. Frontend auto-fills or developer copies from terminal
+7. Verify OTP
+8. Account activated
+```
+
+**Development mode rules**:
+- Enabled when `NODE_ENV=development`
+- OTP printed to console with clear `[DEV]` prefix
+- OTP included in registration response body
+- In production: OTP is NEVER returned in response, only sent via email
+- This is a temporary bridge until Nodemailer is configured
+
+### OTP Verification Endpoint
+
+```
+POST /api/auth/verify-email
+
+Request Body:
+{
+  "email": "john@example.com",
+  "otp": "123456"
+}
+
+Flow:
+1. Find OTP record for email
+2. Check not expired (10 minute window)
+3. Check attempts < 5 (rate limit)
+4. Compare OTP
+5. If valid: mark email verified, delete OTP record
+6. If invalid: increment attempts
+```
+
+---
+
+## Seed User Script
+
+For development without email verification flow:
+
+```bash
+pnpm seed:user
+```
+
+**Script behavior**:
+- Creates a test user with pre-verified email
+- Hashes password using Better Auth's password hashing
+- Skips if user already exists (idempotent)
+- Prints credentials to terminal
+
+**Output**:
+```
+[SEED] Test user created:
+  Email: test@connectus.dev
+  Password: Password123
+  Status: Email verified, ready to login
 ```
 
 ---
 
 ## Session Management
 
-### Session Storage
-
-**Redis (Primary)**: Fast session lookup on every request
-```
-Key: session:{session_id}
-Value: {
-  userId: "uuid",
-  createdAt: "timestamp",
-  expiresAt: "timestamp",
-  ipAddress: "1.2.3.4",
-  userAgent: "Mozilla/5.0..."
-}
-TTL: matches session expiration
-```
-
-**PostgreSQL (Backup)**: Persistent storage for session history and management
-- Users can view active sessions in settings
-- Users can revoke sessions individually
-
 ### Session Lifecycle
 
 ```
-Created: On login/registration
-Validated: On every authenticated request (middleware)
-Extended: On activity (sliding window, optional)
-Expired: After maxAge (24h or 30d)
-Revoked: User clicks "log out" or "revoke session"
+Created:   On successful login
+Validated: On every authenticated request (middleware checks cookie)
+Extended:  Automatically by Better Auth (sliding window)
+Expired:   After maxAge (7 days default)
+Revoked:   On logout, password change, or manual revocation
 ```
 
-### Session Security
-- Session ID: 256-bit cryptographically random value
-- Stored in HTTP-only, Secure, SameSite=Lax cookie
-- New session ID on privilege escalation (prevent session fixation)
-- IP and user-agent logged for suspicious activity detection
-
----
-
-## Password Management
-
-### Password Reset Flow
-
-```
-1. Client sends POST /api/auth/forgot-password
-   Body: { email }
-
-2. Server (always returns success, even if email not found):
-   - Find user by email
-   - If found: generate reset token (crypto.randomBytes(32))
-   - Store hashed token in password_reset_tokens (expires 1 hour)
-   - Send email with reset link: {APP_URL}/reset-password?token={raw_token}
-
-3. Client sends POST /api/auth/reset-password
-   Body: { token, newPassword }
-
-4. Server validates:
-   - Hash token, find matching record
-   - Check not expired (1 hour)
-   - Check not already used
-   - Validate new password strength
-
-5. Server updates:
-   - Hash new password
-   - Update user.password_hash
-   - Invalidate all existing sessions for this user
-   - Mark reset token as used
-   - Send confirmation email
-```
-
-### Password Requirements
-- Minimum 8 characters
-- At least 1 uppercase letter
-- At least 1 lowercase letter
-- At least 1 number
-- No maximum length (bcrypt handles any length)
-- Not in common password list (top 10,000)
-
----
-
-## OAuth Token Management (Social Platforms)
-
-This section covers OAuth tokens for **social platform connections** (LinkedIn, Twitter, etc.), which are separate from login OAuth.
-
-### Token Storage
-- Access tokens and refresh tokens encrypted at rest with AES-256-GCM
-- Encryption key stored in environment variables, never in code
-- Tokens stored in `social_accounts` table
-
-### Token Refresh Strategy
-
-```
-1. Before any platform API call:
-   - Check token_expires_at
-   - If expires within 5 minutes: proactive refresh
-
-2. Refresh process:
-   - Call platform's token refresh endpoint
-   - Store new access_token (encrypted)
-   - Update token_expires_at
-   - If refresh_token rotated, store new one
-
-3. Refresh failure handling:
-   - Mark account status as 'expired'
-   - Notify user: "Please reconnect your {platform} account"
-   - Pause scheduled posts for that account
-   - Do NOT delete old tokens (user might reconnect)
-```
-
-### Token Encryption
+### Route Protection (Frontend)
 
 ```typescript
-// Encryption approach (conceptual)
-import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
-
-const ALGORITHM = 'aes-256-gcm';
-const KEY = Buffer.from(process.env.TOKEN_ENCRYPTION_KEY, 'hex'); // 32 bytes
-
-function encrypt(plaintext: string): string {
-  const iv = randomBytes(16);
-  const cipher = createCipheriv(ALGORITHM, KEY, iv);
-  const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  // Store as: iv:tag:encrypted (all base64)
-  return `${iv.toString('base64')}:${tag.toString('base64')}:${encrypted.toString('base64')}`;
-}
-
-function decrypt(ciphertext: string): string {
-  const [ivB64, tagB64, encB64] = ciphertext.split(':');
-  const iv = Buffer.from(ivB64, 'base64');
-  const tag = Buffer.from(tagB64, 'base64');
-  const encrypted = Buffer.from(encB64, 'base64');
-  const decipher = createDecipheriv(ALGORITHM, KEY, iv);
-  decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString();
-}
-```
-
----
-
-## Authorization
-
-### Current Model (Phase 1-6): Plan-Based Access Control
-
-No roles — access controlled by subscription plan:
-
-| Feature | Free | Pro | Business | Agency |
-|---------|------|-----|----------|--------|
-| Social accounts | 1 | 3 | 10 | 25 |
-| AI generations/month | 10 | 100 | Unlimited | Unlimited |
-| Scheduled posts | 10/month | Unlimited | Unlimited | Unlimited |
-| Analytics history | 7 days | 90 days | 1 year | 1 year |
-| Brand memory | — | Basic | Full | Full |
-| Comment management | — | ✓ | ✓ | ✓ |
-| Trend monitoring | — | — | ✓ | ✓ |
-| Team members | — | — | 3 | Unlimited |
-| API access | — | — | ✓ | ✓ |
-
-**Enforcement**:
-- Middleware checks plan limits before resource creation
-- Returns 403 with `upgrade_required` error code
-- Frontend shows upgrade prompts when limits approached
-
-### Future Model (Phase 8): RBAC
-
-Roles within teams:
-- **Owner**: Full access, billing, team management
-- **Admin**: Full access except billing
-- **Editor**: Create, edit, publish content
-- **Viewer**: Read-only access to analytics and content
-
----
-
-## Middleware Implementation
-
-### Authentication Middleware
-
-```typescript
-// Conceptual middleware structure
-async function authMiddleware(req, res, next) {
-  // 1. Extract session ID from cookie
-  const sessionId = req.cookies['session_id'];
-  if (!sessionId) return res.status(401).json({ error: 'Unauthorized' });
-
-  // 2. Look up session in Redis
-  const session = await redis.get(`session:${sessionId}`);
-  if (!session) return res.status(401).json({ error: 'Session expired' });
-
-  // 3. Check session not expired
-  if (new Date(session.expiresAt) < new Date()) {
-    await redis.del(`session:${sessionId}`);
-    return res.status(401).json({ error: 'Session expired' });
+// Middleware in Next.js
+export function middleware(request: NextRequest) {
+  const session = request.cookies.get('better-auth.session_token');
+  
+  const protectedPaths = ['/dashboard', '/posts', '/settings', '/analytics'];
+  const isProtected = protectedPaths.some(p => request.nextUrl.pathname.startsWith(p));
+  
+  if (isProtected && !session) {
+    return NextResponse.redirect(new URL('/login', request.url));
   }
-
-  // 4. Attach user to request
-  req.userId = session.userId;
-  req.sessionId = sessionId;
-  next();
-}
-```
-
-### Plan Check Middleware
-
-```typescript
-// Conceptual plan enforcement
-function requirePlan(...allowedPlans: string[]) {
-  return async (req, res, next) => {
-    const user = await userRepo.findById(req.userId);
-    if (!allowedPlans.includes(user.plan)) {
-      return res.status(403).json({
-        error: 'Plan upgrade required',
-        code: 'UPGRADE_REQUIRED',
-        currentPlan: user.plan,
-        requiredPlan: allowedPlans[0]
-      });
-    }
-    next();
-  };
+  
+  const authPaths = ['/login', '/register'];
+  const isAuthPage = authPaths.some(p => request.nextUrl.pathname.startsWith(p));
+  
+  if (isAuthPage && session) {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
+  }
 }
 ```
 
@@ -360,36 +361,10 @@ function requirePlan(...allowedPlans: string[]) {
 
 ## Security Measures
 
-### CSRF Protection
-- SameSite=Lax cookies (prevents CSRF for state-changing requests)
-- State parameter in OAuth flows
-- Origin/Referer header validation for sensitive operations
-
-### Brute Force Protection
-- Rate limiting on login: 5 attempts / 15 minutes per IP + email
-- Rate limiting on registration: 3 accounts / hour per IP
-- Rate limiting on password reset: 3 requests / hour per email
-- Progressive delays on failed attempts
-
-### Account Security
-- Email notification on new login from unknown device/location
-- Session list in settings (view and revoke)
-- Password change requires current password
-- Account deletion requires password confirmation
-- Soft-delete with 30-day recovery window
-
----
-
-## Better Auth Configuration
-
-Better Auth is configured as the authentication backbone with these plugins/features:
-
-- Email + Password provider
-- Google OAuth provider
-- GitHub OAuth provider
-- Session management (Redis-backed)
-- Email verification
-- Password reset
-- Rate limiting
-
-The configuration connects to our PostgreSQL database for user storage and Redis for sessions, integrating cleanly with our Express middleware chain.
+- Passwords hashed by Better Auth (bcrypt/argon2)
+- Rate limiting on auth endpoints (5 attempts / 15 min)
+- OTP rate limiting (5 verification attempts per OTP)
+- Session cookies: HTTP-only, Secure, SameSite=Lax
+- CSRF protection via SameSite cookies
+- Account lockout after repeated failures
+- Generic error messages ("Invalid credentials" — never reveal which field is wrong)

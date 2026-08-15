@@ -2,527 +2,268 @@
 
 ## Overview
 
-This document maps every user journey through AI Social OS, from first visit to daily usage. These flows inform UI design, API design, and implementation priorities.
+This document maps the primary user journeys through AI Social OS.
 
 ---
 
-## 1. Registration & Onboarding Flow
+## 1. Complete User Flow
 
 ```
-[Landing Page] → [Sign Up Button]
+Landing Page
+     ↓
+Register (Email + Password)
+     ↓
+Verify Email (6-digit OTP, dev mode: from terminal)
+     ↓
+Login
+     ↓
+Dashboard (Onboarding state — no social accounts)
+     ↓
+Accounts Page
+     ↓
+Connect LinkedIn (OAuth 2.0)
+     ↓
+Store LinkedIn Tokens (encrypted)
+     ↓
+Sidebar Unlocks (all features available)
+     ↓
+Create Post
+     ↓
+Schedule or Publish
+     ↓
+Analytics
+```
+
+---
+
+## 2. Registration Flow
+
+```
+[Landing Page] → [Register Button]
        ↓
 [Registration Form]
+  - Full Name
   - Email
   - Password (min 8 chars, 1 uppercase, 1 number)
-  - Full Name
        ↓
-[Email Verification]
-  - Send verification email
-  - User clicks link
-  - Redirect to onboarding
+[Submit] → [API: POST /api/auth/sign-up/email]
        ↓
-[Onboarding Step 1: Welcome]
-  - Product overview (30 sec video or animated walkthrough)
-  - "Let's set up your AI social media manager"
+[OTP Generated]
+  - Production: sent via email (Nodemailer)
+  - Development: printed to terminal + returned in response
        ↓
-[Onboarding Step 2: Connect Platform]
-  - "Connect your first social account"
-  - LinkedIn OAuth button (primary)
-  - "Skip for now" option
-  - On success: fetch profile data + recent posts
+[OTP Verification Page]
+  - 6-digit code input
+  - 10-minute expiry
+  - Max 5 attempts
        ↓
-[Onboarding Step 3: Industry & Goals]
-  - Select industry (dropdown with search)
-  - Select 1-3 content goals
-  - This configures AI context
+[Submit OTP] → [API: POST /api/auth/verify-email]
        ↓
-[Onboarding Step 4: Posting Preferences]
-  - Preferred posting frequency
-  - Preferred time windows
-  - Timezone auto-detected, editable
-       ↓
-[Onboarding Step 5: Voice Sample (Optional)]
-  - "Paste 3-5 of your best posts"
-  - OR "We'll learn from your connected account's history"
-  - AI processes and creates initial brand memory
-       ↓
-[Dashboard - First Time]
-  - Welcome card with quick actions
-  - "Create your first AI post" CTA
-  - Guided tooltips on navigation
+[Success] → [Redirect to Login]
 ```
-
-### Error States:
-- Email already registered → "Account exists, try logging in" with login link
-- OAuth failure → Retry button + manual connection instructions
-- Email verification expired → Resend button
-- Onboarding abandoned → Resume from last step on next login
 
 ---
 
-## 2. Login Flow
+## 3. Login Flow
 
 ```
 [Login Page]
   - Email + Password form
-  - "Remember me" checkbox
-  - "Forgot password?" link
-  - OAuth buttons (Google, GitHub)
+  - "Forgot Password?" link
+  - "Register" link
+       ↓
+[Submit] → [API: POST /api/auth/sign-in/email]
        ↓
 [Validation]
   - Check credentials
+  - Check email verified
   - Rate limit: 5 attempts / 15 min
        ↓
-[Success] → [Dashboard]
-[Failure] → [Error message, remaining attempts shown after 3rd failure]
-```
-
-### Password Reset:
-```
-[Forgot Password] → [Enter Email]
-       ↓
-[Send Reset Email] (always show success, even if email not found)
-       ↓
-[Click Reset Link] → [New Password Form]
-       ↓
-[Password Updated] → [Login Page with success message]
+[Success] → [Session created, cookie set] → [Redirect to Dashboard]
+[Failure] → [Error: "Invalid email or password"]
 ```
 
 ---
 
-## 3. Content Creation Flow
-
-### 3.1 AI-Generated Content
+## 4. Password Reset Flow
 
 ```
-[Dashboard] → [Create Post Button] OR [AI Writer Page]
+[Login Page] → [Forgot Password Link]
        ↓
-[Content Generation Interface]
-  - Input method selection:
-    a) Topic/idea (text input)
-    b) URL (paste article link)
-    c) Quick prompts (predefined starting points)
+[Forgot Password Page]
+  - Email input
        ↓
-[Configure Generation]
-  - Target platform (LinkedIn, X, etc.)
-  - Tone selection (professional, casual, etc.)
-  - Length preference
-  - Include hashtags? (toggle)
-  - Include CTA? (toggle + type selector)
+[Submit] → [API: POST /api/auth/forget-password]
+  - Always shows success (don't reveal if email exists)
        ↓
-[Generate Button] → [Loading state, 3-8 seconds]
+[Reset Email Sent] (or printed in dev mode)
        ↓
-[Results: 2-3 Variants]
-  - Each variant shows:
-    - Full content preview
-    - Character count
-    - Estimated engagement score
-    - "Use this" / "Regenerate" / "Edit" buttons
+[Reset Password Page]
+  - New password
+  - Confirm password
        ↓
-[User selects variant] → [Post Editor (pre-filled)]
+[Submit] → [API: POST /api/auth/reset-password]
        ↓
-[Post Editor]
-  - Edit content freely
-  - Platform preview
-  - Character count
-  - Options:
-    a) Save as Draft
-    b) Schedule (opens scheduler)
-    c) Publish Now
-    d) AI: Improve / Shorten / Expand
-```
-
-### 3.2 Manual Content Creation
-
-```
-[Create Post Button] → [Post Editor (empty)]
-       ↓
-[Write content manually]
-  - Character count visible
-  - Platform selector
-  - AI assist button (available inline)
-       ↓
-[Options]
-  a) Save as Draft
-  b) Schedule
-  c) Publish Now
+[Success] → [Redirect to Login with success message]
 ```
 
 ---
 
-## 4. Scheduling Flow
-
-### 4.1 Schedule Specific Time
+## 5. Dashboard — First Visit (No Social Accounts)
 
 ```
-[Post Editor] → [Schedule Button]
+[Login Success] → [Dashboard]
        ↓
-[Schedule Modal]
-  - Date picker (calendar)
-  - Time picker
-  - Timezone display
-  - AI suggested time (highlighted, with explanation)
-  - "Add to queue instead" option
+[Onboarding State]:
+  - Welcome message: "Welcome, {name}!"
+  - CTA: "Connect your first social account"
+  - Large LinkedIn connection card
+  - Sidebar: most items disabled/locked
        ↓
-[Confirm Schedule]
-       ↓
-[Post status → "Scheduled"]
-[Redirect to Calendar or Post List]
-[Confirmation toast notification]
-```
-
-### 4.2 Add to Queue
-
-```
-[Post Editor] → [Add to Queue]
-       ↓
-[Queue confirmation]
-  - Shows next available slot time
-  - Shows position in queue
-  - Option to move position
-       ↓
-[Post added to queue]
-[Status → "Queued"]
-```
-
-### 4.3 Calendar Interactions
-
-```
-[Calendar Page]
-  - View scheduled posts
-  - Click empty slot → Create new post for that time
-  - Click existing post → View/Edit/Reschedule
-  - Drag post → Reschedule to new time
-  - Right-click → Delete/Duplicate/Edit
+[User clicks "Connect LinkedIn"] → [Accounts Page]
 ```
 
 ---
 
-## 5. Publishing Flow (System)
+## 6. Connect LinkedIn Flow
 
 ```
-[Worker polls every 30 seconds]
+[Accounts Page] → [Connect LinkedIn Button]
        ↓
-[Find posts where scheduledAt <= now AND status = 'scheduled']
+[API: GET /api/social-accounts/linkedin/auth]
+  - Generate state token
+  - Store state in Redis/session
+  - Redirect to LinkedIn Authorization URL
        ↓
-[For each post]:
-  [Fetch user's OAuth token for target platform]
+[LinkedIn Authorization Page]
+  - User sees ConnectUs requesting permissions
+  - Scopes: openid, profile, email, w_member_social
        ↓
-  [Validate token is valid (not expired)]
-    - If expired: attempt refresh
-    - If refresh fails: mark post as "failed", notify user
+[User clicks "Allow"]
        ↓
-  [Call platform API to publish]
-    - LinkedIn: POST /ugcPosts
-    - X: POST /2/tweets
+[LinkedIn redirects to callback URL with code + state]
        ↓
-  [Success]:
-    - Update post status → "published"
-    - Store platform post ID
-    - Send success notification
-    - Queue analytics fetch (delayed 1 hour)
+[API: GET /api/social-accounts/linkedin/callback]
+  - Validate state token
+  - Exchange code for access token
+  - Fetch user profile (GET /v2/userinfo)
+  - Encrypt access token
+  - Create social_account record
        ↓
-  [Failure]:
-    - Increment retry count
-    - If retries < 3: reschedule with exponential backoff
-    - If retries >= 3: mark as "failed", notify user
-    - Log error details
-```
-
----
-
-## 6. Analytics Flow
-
-### 6.1 Viewing Analytics
-
-```
-[Dashboard] → [Analytics Nav Item]
+[Redirect to Accounts Page]
+  - Show LinkedIn as "Connected"
+  - Show connected date
        ↓
-[Analytics Overview Page]
-  - Time range selector (7d, 30d, 90d, custom)
-  - Key metrics summary cards:
-    - Total impressions
-    - Total engagement
-    - Follower growth
-    - Posts published
-  - Engagement over time chart
-  - Top performing posts list
-  - AI insights panel
-       ↓
-[Click on specific post] → [Post Detail Analytics]
-  - Full metrics breakdown
-  - Performance vs. average comparison
-  - AI analysis of why it performed well/poorly
-```
-
-### 6.2 Weekly Report
-
-```
-[System: Every Monday 8am user's timezone]
-       ↓
-[AI Worker generates weekly report]
-  - Aggregate past 7 days metrics
-  - Compare to previous week
-  - Identify best/worst performing content
-  - Generate recommendations
-       ↓
-[Store report in database]
-[Send email digest to user]
-[Show report card in dashboard]
-       ↓
-[User views report]
-  - Full report page
-  - Actionable next steps
-  - "Generate content based on insights" button
+[Sidebar automatically unlocks all features]
 ```
 
 ---
 
-## 7. Comment Management Flow
+## 7. Dashboard — Connected State
 
 ```
-[Dashboard] → [Engagement Nav Item] OR [Notification: "5 new comments"]
-       ↓
-[Comment Inbox]
-  - List of unread comments (newest first)
-  - Each shows: commenter name, comment text, post title, time, sentiment
-  - Filter: All / Needs Reply / Questions / Positive / Negative
-       ↓
-[Click on comment]
-       ↓
-[Comment Detail]
-  - Original post context
-  - Full comment
-  - AI-generated reply suggestions (2-3 options)
-  - Text input for custom reply
-       ↓
-[User action]:
-  a) Click suggested reply → Edit if needed → Send
-  b) Write custom reply → Send
-  c) Like comment only
-  d) Mark as "no reply needed"
-       ↓
-[Reply published to platform]
-[Comment marked as handled]
-[Move to next unread comment]
+[Dashboard after connection]:
+  - Overview metrics (initially empty/zero)
+  - Recent posts section
+  - Upcoming scheduled posts
+  - Quick actions: Create Post, AI Writer
+  - Usage/quota summary
 ```
 
 ---
 
-## 8. Brand Memory Flow
+## 8. Sidebar Lock/Unlock Behavior
 
-### 8.1 Initial Setup
+### When zero social accounts connected:
 
-```
-[Onboarding] OR [Settings → Brand Voice]
-       ↓
-[Voice Configuration Form]
-  - Formality slider (1-5)
-  - Humor slider (1-5)
-  - Emoji usage (none/light/moderate/heavy)
-  - Topics of expertise (multi-select + custom)
-  - Words to avoid (text input, comma-separated)
-  - Example posts (paste area)
-       ↓
-[AI processes inputs]
-  - Extract writing patterns
-  - Build vocabulary profile
-  - Identify tone characteristics
-       ↓
-[Brand Profile Created]
-  - Display summary of learned voice
-  - "Generate sample post to test" button
-  - Refinement: thumbs up/down on sample
-```
+**Enabled (clickable)**:
+- Dashboard
+- Accounts
+- Quota
+- Settings
+- Help
+- Logout
 
-### 8.2 Continuous Learning
+**Disabled (locked)**:
+- Posts
+- Drafts
+- Calendar
+- Analytics
+- AI Writer
+- Brand Voice
 
-```
-[User generates AI content]
-       ↓
-[User accepts, edits, or rejects]
-       ↓
-[System records feedback]:
-  - Accepted as-is → positive signal (full weight)
-  - Accepted with edits → learn from edits (partial weight)
-  - Rejected / regenerated → negative signal
-       ↓
-[Brand memory updated periodically]
-  - Weekly recalculation of voice profile
-  - Incorporate new feedback data
-  - Adjust generation parameters
-```
+Locked items show:
+- Greyed out appearance
+- Lock icon
+- Tooltip on hover: "Connect a social account to unlock this feature."
+- Not navigable (click does nothing)
+
+### After one provider connected:
+
+All sidebar items become enabled. Unlock is automatic — no page refresh needed (state updates reactively).
 
 ---
 
 ## 9. Settings Flow
 
 ```
-[User Avatar Menu] → [Settings]
-       ↓
-[Settings Page - Sidebar Navigation]
-  ├── Profile
-  │   - Edit name, email, avatar
-  │   - Change password
-  ├── Social Accounts
-  │   - View connected accounts
-  │   - Connect new account
-  │   - Disconnect account
-  │   - Account health status
-  ├── Brand Voice
-  │   - Voice configuration
-  │   - Content pillars
-  │   - View learned patterns
-  ├── Notifications
-  │   - Toggle per event type
-  │   - Email preferences
-  │   - Quiet hours
-  ├── Scheduling
-  │   - Default posting times
-  │   - Queue slots per day
-  │   - Timezone
-  ├── Billing
-  │   - Current plan
-  │   - Upgrade/downgrade
-  │   - Payment method
-  │   - Invoice history
-  └── Data & Privacy
-      - Export all data
-      - Delete account
-      - Privacy settings
+[Settings Page]
+  ├── Profile (name, email, avatar)
+  ├── Notifications (preferences)
+  ├── Security (change password, sessions)
+  └── Danger Zone (delete account)
 ```
 
 ---
 
-## 10. Subscription Flow
+## 10. Accounts Page
 
 ```
-[Free user hits limit] OR [Pricing page] OR [Settings → Billing]
-       ↓
-[Pricing Page]
-  - Plan comparison table
-  - Current plan highlighted
-  - "Most popular" badge on Pro
-       ↓
-[Select Plan] → [Stripe Checkout]
-  - Card details
-  - Billing frequency (monthly/annual with discount)
-  - Coupon code field
-       ↓
-[Payment Success]
-  - Confirmation page
-  - Updated limits immediately
-  - Welcome email for new plan
-       ↓
-[Subscription Management]
-  - Cancel anytime (effective end of period)
-  - Downgrade (effective end of period)
-  - Upgrade (immediate, prorated)
+[Accounts Page]
+  ├── LinkedIn Card
+  │   ├── Logo + "LinkedIn"
+  │   ├── Status: Connected / Not Connected
+  │   ├── Connected account name + avatar
+  │   ├── Connected date
+  │   └── Actions: [Connect] / [Disconnect] / [Reconnect]
+  │
+  ├── X (Twitter) Card — "Coming Soon"
+  ├── Instagram Card — "Coming Soon"
+  ├── Facebook Card — "Coming Soon"
+  ├── Threads Card — "Coming Soon"
+  └── YouTube Card — "Coming Soon"
 ```
 
 ---
 
-## 11. Error & Edge Case Flows
+## 11. Quota Page
 
-### OAuth Token Expired
 ```
-[User tries to publish] → [Token expired detected]
-       ↓
-[Attempt silent refresh]
-  - Success → Continue operation
-  - Failure → Show "Reconnect required" banner
-       ↓
-[User clicks reconnect] → [OAuth flow] → [Success] → [Resume operation]
-```
-
-### AI Generation Failure
-```
-[User requests content generation] → [Primary AI provider fails]
-       ↓
-[Fallback to secondary provider]
-  - Success → Return result (slightly longer wait)
-  - Both fail → Show error message
-       ↓
-[Error State]
-  - "AI is temporarily unavailable"
-  - "Try again" button
-  - Option to write manually
-```
-
-### Post Publish Failure
-```
-[Scheduled post fails to publish]
-       ↓
-[System retries (3 attempts, exponential backoff)]
-  - 1st retry: 5 minutes
-  - 2nd retry: 30 minutes
-  - 3rd retry: 2 hours
-       ↓
-[All retries exhausted]
-  - Post status → "failed"
-  - In-app notification with error details
-  - Email notification
-  - "Retry Now" button in UI
-  - Option to reschedule
-```
-
-### Rate Limit Hit
-```
-[API call to social platform] → [429 Rate Limited]
-       ↓
-[Queue the request]
-  - Respect Retry-After header
-  - Exponential backoff
-  - User not directly impacted (async operations)
-       ↓
-[For user-facing operations]:
-  - "Please try again in X minutes"
-  - Auto-retry in background
+[Quota Page]
+  - Current plan name
+  - Posts published this month / limit
+  - AI generations used / limit
+  - Connected accounts / limit
+  - Storage used (media)
+  - Upgrade CTA (if on free plan)
 ```
 
 ---
 
-## 12. Daily Usage Patterns
+## 12. Daily Usage Pattern
 
-### Power User (Daily Active)
 ```
 Morning:
-  1. Open dashboard → Review overnight engagement
-  2. Check AI content suggestions → Approve/edit 1-2 posts
-  3. Review comment inbox → Reply to priority comments
-  4. Glance at calendar for upcoming scheduled posts
+  1. Login → Dashboard
+  2. Check any published post status
+  3. Review upcoming scheduled posts
+  4. Create or approve AI-generated content
 
 Midday:
-  5. React to trend alert → Generate timely content → Schedule
+  5. Check engagement (analytics)
+  6. Respond to comments (future)
 
 Evening:
-  6. Check post performance from earlier today
-  7. Queue content for tomorrow
-```
-
-### Weekly User (3x/week)
-```
-Monday:
-  1. Review weekly report
-  2. Generate 5-7 posts for the week
-  3. Schedule across the week via calendar
-  4. Handle comment inbox (batch)
-
-Wednesday:
-  5. Quick check on post performance
-  6. Adjust scheduled content if needed
-
-Friday:
-  7. Review week's performance
-  8. Note topics that worked well
-```
-
-### Set-and-Forget User (Weekly Check-in)
-```
-Sunday evening:
-  1. Open app, review AI's weekly suggestions
-  2. Approve/reject batch of AI-generated posts
-  3. AI auto-schedules approved posts
-  4. Review and reply to top comments
-  5. Close app — AI handles the rest
+  7. Schedule content for next day
+  8. Review weekly performance
 ```
