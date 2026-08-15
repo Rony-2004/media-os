@@ -19,6 +19,10 @@ model User {
   emailVerified Boolean   @default(false)
   avatar        String?
   isActive      Boolean   @default(true)
+  role          String    @default("USER")
+  isBlocked     Boolean   @default(false)
+  plan          String    @default("FREE")
+  weeklyPostLimit Int     @default(2)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

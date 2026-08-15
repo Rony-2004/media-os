@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { readApiResponse } from '@/lib/api-response';
 
 export interface AuthUser {
   id: string;
@@ -8,6 +9,14 @@ export interface AuthUser {
   email: string;
   avatar: string | null;
   emailVerified: boolean;
+  role: string;
+  plan: string;
+  weeklyPostLimit: number;
+}
+
+interface AuthResponse {
+  data?: { user: AuthUser };
+  error?: { message?: string };
 }
 
 /**
@@ -49,8 +58,9 @@ export function useLogin() {
         credentials: 'include',
         body: JSON.stringify(input),
       });
-      const data = await res.json();
+      const data = await readApiResponse<AuthResponse>(res);
       if (!res.ok) throw new Error(data.error?.message || 'Login failed');
+      if (!data.data) throw new Error('Login failed');
       return data.data;
     },
     onSuccess: (data) => {

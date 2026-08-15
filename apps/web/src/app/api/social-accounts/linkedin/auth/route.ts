@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth-guard';
-import { randomBytes, createHash } from 'crypto';
-
-// In-memory state store (use Redis in production)
-// Stores: state -> { userId, expiresAt }
-const stateStore = new Map<string, { userId: string; expiresAt: number }>();
-
-// Export for callback to use
-export { stateStore as linkedinStateStore };
+import { randomBytes } from 'crypto';
+import { linkedinStateStore } from '@/lib/linkedin-store';
+import { LINKEDIN_OAUTH_SCOPES } from '@/lib/linkedin/oauth';
 
 export async function GET(req: NextRequest) {
   const authUser = getAuthUser(req);
@@ -25,7 +20,7 @@ export async function GET(req: NextRequest) {
 
   // Generate CSRF state token
   const state = randomBytes(32).toString('hex');
-  stateStore.set(state, {
+  linkedinStateStore.set(state, {
     userId: authUser.userId,
     expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes
   });
@@ -35,7 +30,7 @@ export async function GET(req: NextRequest) {
     client_id: clientId,
     redirect_uri: callbackUrl,
     state,
-    scope: 'openid profile email w_member_social',
+    scope: LINKEDIN_OAUTH_SCOPES.join(' '),
   });
 
   return NextResponse.redirect(`https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`);

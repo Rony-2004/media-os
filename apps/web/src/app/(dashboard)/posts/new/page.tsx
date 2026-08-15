@@ -5,20 +5,33 @@ import { useRouter } from 'next/navigation';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Sparkles, Save, Send, Clock, Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import type { SocialAccount } from '@/hooks/use-connected-accounts';
 
-const PLATFORM_LIMITS: Record<string, number> = {
+type SocialPlatform = 'linkedin' | 'twitter' | 'instagram' | 'facebook' | 'threads';
+
+const PLATFORM_LIMITS: Record<SocialPlatform, number> = {
   linkedin: 3000,
   twitter: 280,
   instagram: 2200,
+  facebook: 63206,
+  threads: 500,
 };
 
-async function fetchAccounts() {
+interface CreatePostInput {
+  content: string;
+  platform: SocialPlatform;
+  socialAccountId?: string;
+  status: 'draft' | 'scheduled';
+  scheduledAt?: string;
+}
+
+async function fetchAccounts(): Promise<SocialAccount[]> {
   const res = await fetch('/api/social-accounts', { credentials: 'include' });
   if (!res.ok) return [];
   return (await res.json()).data || [];
 }
 
-async function createPost(data: any) {
+async function createPost(data: CreatePostInput) {
   const res = await fetch('/api/posts', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -33,7 +46,7 @@ async function createPost(data: any) {
 export default function NewPostPage() {
   const router = useRouter();
   const [content, setContent] = useState('');
-  const [platform, setPlatform] = useState('linkedin');
+  const [platform, setPlatform] = useState<SocialPlatform>('linkedin');
   const [accountId, setAccountId] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [showSchedule, setShowSchedule] = useState(false);
@@ -53,7 +66,7 @@ export default function NewPostPage() {
   }, []);
 
   useEffect(() => {
-    const linkedIn = accounts.find((a: any) => a.provider === 'linkedin');
+    const linkedIn = accounts.find((account) => account.provider === 'linkedin');
     if (linkedIn) setAccountId(linkedIn.id);
   }, [accounts]);
 
@@ -67,7 +80,7 @@ export default function NewPostPage() {
         scheduledAt: status === 'scheduled' && scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
       }),
     onSuccess: (_, status) => {
-      router.push(status === 'draft' ? '/drafts' : '/posts');
+      router.push(status === 'draft' ? '/platform/linkedin?tab=drafts' : '/platform/linkedin?tab=scheduled');
     },
   });
 
@@ -98,7 +111,7 @@ export default function NewPostPage() {
             <label className="block text-sm font-medium mb-1.5">Platform</label>
             <select
               value={platform}
-              onChange={(e) => setPlatform(e.target.value)}
+              onChange={(e) => setPlatform(e.target.value as SocialPlatform)}
               className="w-full px-3 py-2 border rounded-lg bg-background text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="linkedin">LinkedIn</option>

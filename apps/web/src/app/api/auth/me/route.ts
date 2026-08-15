@@ -27,6 +27,9 @@ export async function GET(req: NextRequest) {
       email: true,
       avatar: true,
       emailVerified: true,
+      role: true,
+      plan: true,
+      weeklyPostLimit: true,
       createdAt: true,
     },
   });

@@ -1,83 +1,68 @@
 'use client';
 
-import { Gauge, Sparkles, Zap, ArrowUpRight, CheckCircle2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { CalendarClock, FileCheck2, Link2, Sparkles } from 'lucide-react';
+import { useSession } from '@/hooks/use-auth';
+import { useConnectedAccounts } from '@/hooks/use-connected-accounts';
+import { MetricCard, PageHeader, Panel, StatusBadge } from '@/components/ui/product';
 
-export default function QuotaPage() {
-  return (
-    <div className="max-w-4xl mx-auto space-y-8 pb-12">
-      {/* Header Banner */}
-      <div className="glass-card rounded-2xl p-6 sm:p-8 bg-gradient-to-r from-blue-900 via-indigo-950 to-slate-900 text-white relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-semibold border border-blue-400/30 mb-3">
-              <Zap className="h-3.5 w-3.5" />
-              <span>Pro Plan Subscriber</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">Usage & Quota Limits</h1>
-            <p className="text-blue-200 text-xs sm:text-sm mt-1 max-w-xl">
-              Track monthly AI generation limits, platform connection allowances, and scheduled post limits.
-            </p>
-          </div>
-
-          <button className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl text-xs font-bold hover:opacity-90 transition-all shrink-0">
-            <span>Upgrade Plan</span>
-            <ArrowUpRight className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Quota Progress Items */}
-      <div className="space-y-4">
-        <h2 className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground">
-          Monthly Quota Breakdown
-        </h2>
-
-        <div className="grid grid-cols-1 gap-4">
-          <QuotaItem label="AI Content Generations" used={42} limit={500} unit="generations this month" color="bg-primary" />
-          <QuotaItem label="Posts Published Across Platforms" used={12} limit={100} unit="published posts" color="bg-emerald-500" />
-          <QuotaItem label="Connected Social Platforms" used={1} limit={5} unit="accounts linked" color="bg-violet-500" />
-          <QuotaItem label="Trend Monitoring Keywords" used={8} limit={25} unit="topics tracked" color="bg-amber-500" />
-        </div>
-      </div>
-    </div>
-  );
+interface QuotaPost {
+  status: string;
+  publishedAt: string | null;
 }
 
-function QuotaItem({
-  label,
-  used,
-  limit,
-  unit,
-  color,
-}: {
-  label: string;
-  used: number;
-  limit: number;
-  unit: string;
-  color: string;
-}) {
-  const percentage = Math.min((used / limit) * 100, 100);
+export default function QuotaPage() {
+  const { data: user } = useSession();
+  const { data: accounts = [] } = useConnectedAccounts();
+  const { data: posts = [] } = useQuery<QuotaPost[]>({
+    queryKey: ['posts', 'quota'],
+    queryFn: async () => {
+      const response = await fetch('/api/posts', { credentials: 'include' });
+      if (!response.ok) return [];
+      return (await response.json()).data ?? [];
+    },
+  });
+
+  const weekStart = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const publishedThisWeek = posts.filter(
+    (post) => post.status === 'published' && post.publishedAt && new Date(post.publishedAt).getTime() >= weekStart,
+  ).length;
+  const scheduled = posts.filter((post) => post.status === 'scheduled').length;
+  const weeklyLimit = user?.weeklyPostLimit ?? 0;
+  const remaining = Math.max(weeklyLimit - publishedThisWeek, 0);
+  const usage = weeklyLimit > 0 ? Math.min((publishedThisWeek / weeklyLimit) * 100, 100) : 0;
 
   return (
-    <div className="glass-card rounded-2xl p-5 border space-y-3">
-      <div className="flex justify-between items-center text-xs">
-        <span className="font-bold text-foreground">{label}</span>
-        <span className="font-bold text-muted-foreground">
-          <strong className="text-foreground">{used}</strong> / {limit} {unit}
-        </span>
+    <div className="mx-auto max-w-5xl space-y-8 pb-12">
+      <PageHeader
+        eyebrow="Plan & usage"
+        title="Quota"
+        description="A clear view of the limits currently enforced by your ConnectUs plan."
+        actions={<StatusBadge tone="dark">{user?.plan || 'FREE'} plan</StatusBadge>}
+      />
+
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <MetricCard label="Published / 7 days" value={publishedThisWeek} hint={`${remaining} remaining`} icon={<FileCheck2 className="h-4 w-4" />} />
+        <MetricCard label="Weekly limit" value={weeklyLimit || '—'} hint="Posts per rolling week" icon={<CalendarClock className="h-4 w-4" />} />
+        <MetricCard label="Scheduled" value={scheduled} hint="Currently queued" icon={<Sparkles className="h-4 w-4" />} />
+        <MetricCard label="Connections" value={accounts.length} hint="Active social accounts" icon={<Link2 className="h-4 w-4" />} />
       </div>
 
-      <div className="h-2.5 bg-muted rounded-full overflow-hidden p-0.5 border border-border/40">
-        <div
-          className={`h-full ${color} rounded-full transition-all duration-500`}
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-
-      <div className="flex justify-between items-center text-[11px] text-muted-foreground font-medium pt-1">
-        <span>{percentage.toFixed(0)}% utilized</span>
-        <span>{(limit - used)} remaining</span>
-      </div>
+      <Panel className="p-5 sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="dot-label">Weekly publishing</p>
+            <h2 className="mt-3 text-lg font-black tracking-tight">{publishedThisWeek} of {weeklyLimit || '—'} posts used</h2>
+          </div>
+          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Rolling seven-day window</p>
+        </div>
+        <div className="mt-6 h-3 overflow-hidden rounded-full border border-border bg-muted p-0.5">
+          <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${usage}%` }} />
+        </div>
+        <p className="mt-3 text-xs leading-5 text-muted-foreground">
+          AI generation and trend-monitoring meters are hidden until server-side usage tracking is available; this page does not estimate usage.
+        </p>
+      </Panel>
     </div>
   );
 }

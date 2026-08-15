@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 
-interface SocialAccount {
+export interface SocialAccount {
   id: string;
   provider: string;
   providerUsername: string | null;
@@ -11,6 +11,7 @@ interface SocialAccount {
   status: string;
   connectedAt: string;
   expiresAt: string | null;
+  scopes: string | null;
 }
 
 async function fetchConnectedAccounts(): Promise<SocialAccount[]> {

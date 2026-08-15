@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getAuthUser, unauthorizedResponse } from '@/lib/auth-guard';
 import { callAI } from '@/lib/ai';
+import { z } from 'zod';
 
 // ─── Humanized Engineering System Prompt ─────────────────────────────────────
 
@@ -57,33 +58,6 @@ function getMatchingImageForTopic(trend: string, category: string): string {
 // ─── Generate Humanized Software Engineering Topics ─────────────────────────
 
 async function fetchSoftwareEngineeringTopics(): Promise<TrendingTopic[]> {
-  const fallbackTopics: TrendingTopic[] = [
-    {
-      id: `eng-bcrypt-${Date.now()}`,
-      trend: 'How Bcrypt Password Hashing Works Under the Hood & Cost Factor Scaling',
-      category: 'Security Engineering',
-      velocity: 'rising',
-      source: 'Security Architecture',
-      imageUrl: TOPIC_VISUALS.security,
-    },
-    {
-      id: `eng-anthropic-${Date.now()}`,
-      trend: 'Inside Anthropic Claude Models: Long-Context Retention & Memory Optimization',
-      category: 'AI Infrastructure',
-      velocity: 'peaking',
-      source: 'AI Research',
-      imageUrl: TOPIC_VISUALS.ai,
-    },
-    {
-      id: `eng-db-${Date.now()}`,
-      trend: 'Demystifying PostgreSQL Concurrency: How MVCC & Write-Ahead Logs Prevent Data Loss',
-      category: 'Database Systems',
-      velocity: 'emerging',
-      source: 'Backend Architecture',
-      imageUrl: TOPIC_VISUALS.database,
-    },
-  ];
-
   const prompt = `List 3 engaging software engineering topics or core computer science concepts (like Bcrypt password security, Anthropic model context handling, or PostgreSQL concurrency) for developer posts.
 
 Format as JSON array of 3 objects:
@@ -94,35 +68,26 @@ Format as JSON array of 3 objects:
 
 Return ONLY the JSON array.`;
 
-  try {
-    const raw = await callAI({
-      system: 'You return only valid JSON arrays of humanized software engineering topic titles. No math notation, no clickbait.',
-      messages: [{ role: 'user', content: prompt }],
-      maxTokens: 400,
-    });
+  const raw = await callAI({
+    system: 'You return only valid JSON arrays of humanized software engineering topic titles. No math notation, no clickbait.',
+    messages: [{ role: 'user', content: prompt }],
+    maxTokens: 400,
+  });
 
-    const cleaned = raw.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(cleaned);
+  const topicSchema = z.object({
+    trend: z.string().trim().min(1),
+    category: z.string().trim().min(1),
+    velocity: z.string().trim().min(1),
+    source: z.string().trim().min(1),
+  });
+  const cleaned = raw.replace(/```json|```/g, '').trim();
+  const parsed = z.array(topicSchema).min(3).parse(JSON.parse(cleaned));
 
-    if (Array.isArray(parsed) && parsed.length >= 3) {
-      return parsed.map((t: any, i: number) => {
-        const trendTitle = t.trend || fallbackTopics[i].trend;
-        const catName = t.category || fallbackTopics[i].category;
-        return {
-          id: `eng-${Date.now()}-${i}`,
-          trend: trendTitle,
-          category: catName,
-          velocity: t.velocity || 'rising',
-          source: t.source || 'Systems Engineering',
-          imageUrl: getMatchingImageForTopic(trendTitle, catName),
-        };
-      });
-    }
-  } catch {
-    // Fallback on API timeout
-  }
-
-  return fallbackTopics;
+  return parsed.slice(0, 3).map((topic, index) => ({
+    id: `eng-${Date.now()}-${index}`,
+    ...topic,
+    imageUrl: getMatchingImageForTopic(topic.trend, topic.category),
+  }));
 }
 
 // ─── Generate post content for a trend ─────────────────────────────────────
@@ -152,34 +117,48 @@ export async function GET(req: NextRequest) {
   const authUser = getAuthUser(req);
   if (!authUser) return unauthorizedResponse();
 
-  const topics = await fetchSoftwareEngineeringTopics();
-  const selected = topics.slice(0, 3);
+  try {
+    const topics = await fetchSoftwareEngineeringTopics();
+    const suggestions = await Promise.all(
+      topics.map(async (topic, i) => {
+        const content = await generatePostForTrend(topic);
 
-  const suggestions = await Promise.all(
-    selected.map(async (topic, i) => {
-      const content = await generatePostForTrend(topic);
+        const scheduledAt = new Date();
+        scheduledAt.setDate(scheduledAt.getDate() + i + 1);
+        scheduledAt.setHours(9, 0, 0, 0);
 
-      const scheduledAt = new Date();
-      scheduledAt.setDate(scheduledAt.getDate() + i + 1);
-      scheduledAt.setHours(9, 0, 0, 0);
+        return {
+          id: topic.id,
+          trend: topic.trend,
+          category: topic.category,
+          velocity: topic.velocity,
+          source: topic.source,
+          url: topic.url,
+          imageUrl: topic.imageUrl || getMatchingImageForTopic(topic.trend, topic.category),
+          content,
+          platform: 'linkedin',
+          scheduledAt: scheduledAt.toISOString(),
+          characterCount: content.length,
+        };
+      }),
+    );
 
-      return {
-        id: topic.id,
-        trend: topic.trend,
-        category: topic.category,
-        velocity: topic.velocity,
-        source: topic.source,
-        url: topic.url,
-        imageUrl: topic.imageUrl || getMatchingImageForTopic(topic.trend, topic.category),
-        content,
-        platform: 'linkedin',
-        scheduledAt: scheduledAt.toISOString(),
-        characterCount: content.length,
-      };
-    })
-  );
-
-  return NextResponse.json({ data: { suggestions } });
+    return NextResponse.json({ data: { suggestions } });
+  } catch (error: unknown) {
+    console.error(
+      '[AI Suggestions]',
+      error instanceof Error ? error.message : 'Suggestion generation failed',
+    );
+    return NextResponse.json(
+      {
+        error: {
+          code: 'AI_GENERATION_FAILED',
+          message: 'AI suggestions could not be generated. Please try again.',
+        },
+      },
+      { status: 502 },
+    );
+  }
 }
 
 // ─── POST /api/ai/suggestions ───────────────────────────────────────────────

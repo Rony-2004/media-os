@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
+import { InlineNotice } from '@/components/ui/product';
+import { readApiResponse } from '@/lib/api-response';
 import {
   ArrowLeft,
   Sparkles,
@@ -20,6 +22,7 @@ import {
   Wand2,
   Image as ImageIcon,
   RefreshCw,
+  Send,
   ExternalLink,
   ThumbsUp,
   MessageSquare,
@@ -27,7 +30,10 @@ import {
   Eye,
   Calendar as CalendarIcon,
   ShieldCheck,
+  AlertCircle,
   Zap,
+  Bot,
+  MessageCircle,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -53,14 +59,58 @@ interface Post {
   publishedAt: string | null;
   aiGenerated: boolean;
   createdAt: string;
+  platformPostId?: string | null;
+  platformPostUrl?: string | null;
+  metadata?: {
+    linkedInUrl?: string | null;
+    linkedInPostId?: string | null;
+    likes?: number | null;
+    comments?: number | null;
+    views?: number | null;
+    hasRealStats?: boolean;
+    lastSyncedAt?: string | null;
+  };
+  engagementSync?: {
+    status: string;
+    message?: string;
+    cached?: boolean;
+    syncedAt?: string | null;
+  };
+}
+
+interface PostComment {
+  id: string;
+  linkedInCommentId: string;
+  postId: string;
+  postUrn: string;
+  postTitle: string;
+  commenterName: string;
+  commenterHeadline: string | null;
+  commenterAvatar: string | null;
+  commentText: string;
+  createdAt: string | null;
+  likes: number;
+  aiReplyText: string;
+  status: 'pending_review' | 'sent';
+}
+
+interface CommentsResponse {
+  comments: PostComment[];
+  sync: { status: string; message?: string; partial?: boolean };
 }
 
 // ─── API calls ───────────────────────────────────────────────────────────────
 
 async function fetchSuggestions(): Promise<Suggestion[]> {
   const res = await fetch('/api/ai/suggestions', { credentials: 'include' });
-  if (!res.ok) return [];
-  return (await res.json()).data?.suggestions || [];
+  const payload = await readApiResponse<{
+    data?: { suggestions?: Suggestion[] };
+    error?: { message?: string };
+  }>(res);
+  if (!res.ok) {
+    throw new Error(payload.error?.message || 'AI suggestions could not be generated.');
+  }
+  return payload.data?.suggestions || [];
 }
 
 async function fetchPosts(platform: string): Promise<Post[]> {
@@ -105,13 +155,24 @@ const PLATFORM_META: Record<
 export default function PlatformPage() {
   const { provider } = useParams<{ provider: string }>();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'suggestions' | 'scheduled' | 'published' | 'drafts'>('suggestions');
+  const [activeTab, setActiveTab] = useState<'suggestions' | 'scheduled' | 'published' | 'drafts' | 'comments'>('suggestions');
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState<Record<string, string>>({});
   const [showNewPostModal, setShowNewPostModal] = useState(false);
   const [newPostContent, setNewPostContent] = useState('');
   const [isPolishing, setIsPolishing] = useState(false);
+  const [editingReply, setEditingReply] = useState<Record<string, string>>({});
+  const [sendingReplyId, setSendingReplyId] = useState<string | null>(null);
+  const [sentReplies, setSentReplies] = useState<Set<string>>(new Set());
+  const [replyError, setReplyError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const requestedTab = new URLSearchParams(window.location.search).get('tab');
+    if (['suggestions', 'scheduled', 'published', 'drafts', 'comments'].includes(requestedTab || '')) {
+      setActiveTab(requestedTab as typeof activeTab);
+    }
+  }, []);
 
   const meta = PLATFORM_META[provider] || {
     name: provider,
@@ -121,7 +182,13 @@ export default function PlatformPage() {
     logo: null,
   };
 
-  const { data: suggestions = [], isLoading: suggestionsLoading, refetch: refetchSuggestions } = useQuery({
+  const {
+    data: suggestions = [],
+    isLoading: suggestionsLoading,
+    isError: suggestionsFailed,
+    error: suggestionsError,
+    refetch: refetchSuggestions,
+  } = useQuery({
     queryKey: ['suggestions'],
     queryFn: fetchSuggestions,
     staleTime: 0,
@@ -131,7 +198,23 @@ export default function PlatformPage() {
   const { data: posts = [], isLoading: postsLoading } = useQuery({
     queryKey: ['posts', provider],
     queryFn: () => fetchPosts(provider),
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchInterval: 60000,
   });
+
+  const { data: commentsData } = useQuery<CommentsResponse>({
+    queryKey: ['comments', provider],
+    queryFn: async () => {
+      const res = await fetch('/api/comments', { credentials: 'include' });
+      if (!res.ok) throw new Error('Comments could not be loaded.');
+      return (await res.json()).data;
+    },
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchInterval: 60000,
+  });
+  const commentsList = commentsData?.comments ?? [];
 
   const approve = useMutation({
     mutationFn: approveSuggestions,
@@ -141,18 +224,27 @@ export default function PlatformPage() {
     },
   });
 
+  const [publishError, setPublishError] = useState<string | null>(null);
+
   const publishMutation = useMutation({
     mutationFn: async (postId: string) => {
+      setPublishError(null);
       const res = await fetch(`/api/posts/${postId}/publish`, {
         method: 'POST',
         credentials: 'include',
       });
-      if (!res.ok) throw new Error('Failed to publish');
-      return (await res.json()).data;
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error?.message || 'Failed to publish to LinkedIn');
+      }
+      return data.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['posts'] });
       queryClient.invalidateQueries({ queryKey: ['analytics-overview'] });
+    },
+    onError: (err: any) => {
+      setPublishError(err.message);
     },
   });
 
@@ -180,6 +272,10 @@ export default function PlatformPage() {
   const scheduledPosts = posts.filter((p) => p.status === 'scheduled');
   const publishedPosts = posts.filter((p) => p.status === 'published');
   const draftPosts = posts.filter((p) => p.status === 'draft');
+  const syncFailures = publishedPosts.filter(
+    (post) => post.engagementSync && post.engagementSync.status !== 'ok',
+  );
+  const syncIsLive = publishedPosts.length > 0 && syncFailures.length === 0;
 
   const handleApproveAll = () => {
     approve.mutate({
@@ -205,6 +301,32 @@ export default function PlatformPage() {
     setDismissed((prev) => new Set(prev).add(id));
   };
 
+  const handleSendCommentReply = async (comment: PostComment, currentText: string) => {
+    setSendingReplyId(comment.id);
+    setReplyError(null);
+    try {
+      const response = await fetch('/api/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          action: 'post_reply',
+          postUrn: comment.postUrn,
+          replyText: currentText,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error?.message || 'LinkedIn rejected the reply.');
+      setSentReplies((prev) => new Set(prev).add(comment.id));
+      queryClient.invalidateQueries({ queryKey: ['comments', provider] });
+      queryClient.invalidateQueries({ queryKey: ['posts', provider] });
+    } catch (error) {
+      setReplyError(error instanceof Error ? error.message : 'The reply could not be published.');
+    } finally {
+      setSendingReplyId(null);
+    }
+  };
+
   const handleAiPolish = () => {
     if (!newPostContent.trim()) return;
     setIsPolishing(true);
@@ -215,7 +337,7 @@ export default function PlatformPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-12">
+    <div className="mx-auto max-w-6xl space-y-6 pb-12">
       {/* Top Breadcrumbs Navigation */}
       <div className="flex items-center justify-between">
         <Link
@@ -226,13 +348,13 @@ export default function PlatformPage() {
           Back to Dashboard
         </Link>
 
-        <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
-          <span className="h-2 w-2 rounded-full bg-emerald-500" />
-          Realtime Sync Active
+        <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <span className={`h-2 w-2 rounded-full ${syncIsLive ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+          {syncIsLive ? 'Live engagement synced' : 'Engagement sync needs attention'}
         </span>
       </div>
 
-      {/* Platform Header Card (shadcn/ui style) */}
+      {/* Platform Header Card (shadcn/ui style with Auto-Reply Toggle) */}
       <div className="rounded-2xl p-6 border border-border bg-card relative overflow-hidden transition-all duration-300 animate-fade-in">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
           <div className="flex items-center gap-3.5">
@@ -251,12 +373,22 @@ export default function PlatformPage() {
                 </span>
               </div>
               <p className="text-muted-foreground text-xs mt-0.5">
-                Automated developer trend monitoring, content generation & post scheduling
+                Content planning, publishing, real engagement, and human-reviewed AI replies
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <div className="flex items-center gap-2.5 rounded-xl border border-border bg-muted/40 px-3 py-1.5">
+              <Bot className="h-4 w-4 shrink-0 text-primary" />
+              <div className="flex flex-col">
+                <span className="text-[10px] font-bold uppercase text-muted-foreground leading-tight">
+                  Reply mode
+                </span>
+                <span className="text-[11px] font-bold text-foreground leading-tight">Human review</span>
+              </div>
+            </div>
+
             {visibleSuggestions.length > 0 && (
               <button
                 onClick={handleApproveAll}
@@ -283,6 +415,21 @@ export default function PlatformPage() {
         </div>
       </div>
 
+      {publishError && (
+        <div className="p-4 rounded-xl border border-destructive/30 bg-destructive/10 text-destructive text-xs font-semibold flex items-center justify-between animate-fade-in">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
+            <span>{publishError}</span>
+          </div>
+          <button
+            onClick={() => setPublishError(null)}
+            className="p-1 hover:bg-destructive/20 rounded-md text-destructive transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {/* 4 Metric Cards Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
         <div className="glass-card rounded-xl p-4 border border-border bg-card hover:border-blue-500/30 transition-all">
@@ -300,7 +447,7 @@ export default function PlatformPage() {
             <Clock className="h-3.5 w-3.5 text-amber-500" />
           </div>
           <span className="text-xl font-bold text-foreground block">{scheduledPosts.length} Queued</span>
-          <span className="text-[10px] text-muted-foreground font-medium mt-1 block">Auto-Scheduler Active</span>
+          <span className="text-[10px] text-muted-foreground font-medium mt-1 block">Publishing queue</span>
         </div>
 
         <div className="glass-card rounded-xl p-4 border border-border bg-card hover:border-blue-500/30 transition-all">
@@ -314,44 +461,45 @@ export default function PlatformPage() {
 
         <div className="glass-card rounded-xl p-4 border border-border bg-card hover:border-blue-500/30 transition-all">
           <div className="flex items-center justify-between text-muted-foreground mb-1">
-            <span className="text-[11px] font-medium">Pipeline Status</span>
-            <Zap className="h-3.5 w-3.5 text-emerald-500" />
+            <span className="text-[11px] font-medium">Reply assistant</span>
+            <Bot className="h-3.5 w-3.5 text-primary" />
           </div>
           <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-            Monitoring 24/7
+            <span className="h-2 w-2 rounded-full bg-emerald-500" />
+            Manual review mode
           </span>
-          <span className="text-[10px] text-muted-foreground font-medium mt-1 block">Developer Feeds Active</span>
+          <span className="text-[10px] text-muted-foreground font-medium mt-1 block">Nothing posts without approval</span>
         </div>
       </div>
 
       {/* Segmented Navigation Tabs */}
       <div className="border-b border-border">
-        <nav className="flex space-x-6 overflow-x-auto no-scrollbar" aria-label="Tabs">
+        <nav className="scrollbar-none flex space-x-6 overflow-x-auto" aria-label="Tabs">
           {[
             { id: 'suggestions', label: 'AI Suggestions', count: visibleSuggestions.length, icon: Sparkles },
             { id: 'scheduled', label: 'Scheduled Queue', count: scheduledPosts.length, icon: Clock },
             { id: 'published', label: 'Published', count: publishedPosts.length, icon: CheckCircle2 },
             { id: 'drafts', label: 'Drafts', count: draftPosts.length, icon: FileText },
+            { id: 'comments', label: 'Comments & Replies', count: commentsList.length, icon: MessageCircle },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id as typeof activeTab)}
                 className={`flex items-center gap-2 py-3 px-1 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
                   isActive
-                    ? 'border-blue-600 text-blue-600 dark:text-blue-400 font-bold'
+                    ? 'border-primary text-foreground font-bold'
                     : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
                 }`}
               >
-                <Icon className={`h-4 w-4 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-muted-foreground'}`} />
+                <Icon className={`h-4 w-4 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} />
                 <span>{tab.label}</span>
                 <span
                   className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                     isActive
-                      ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
+                      ? 'bg-primary/10 text-primary'
                       : 'bg-muted text-muted-foreground'
                   }`}
                 >
@@ -371,6 +519,25 @@ export default function PlatformPage() {
               {[1, 2, 3].map((i) => (
                 <div key={i} className="h-28 bg-card border rounded-2xl animate-pulse" />
               ))}
+            </div>
+          ) : suggestionsFailed ? (
+            <div className="glass-card rounded-2xl p-12 text-center flex flex-col items-center border border-red-500/25 bg-card">
+              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-3 text-red-600 dark:text-red-400">
+                <AlertCircle className="h-6 w-6" />
+              </div>
+              <h3 className="font-bold text-sm text-foreground">AI Suggestions Unavailable</h3>
+              <p className="text-xs text-muted-foreground max-w-sm mt-1 mb-4">
+                {suggestionsError instanceof Error
+                  ? suggestionsError.message
+                  : 'AI suggestions could not be generated. Please try again.'}
+              </p>
+              <button
+                onClick={() => refetchSuggestions()}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Try Again
+              </button>
             </div>
           ) : visibleSuggestions.length === 0 ? (
             <div className="glass-card rounded-2xl p-12 text-center flex flex-col items-center border border-border bg-card">
@@ -407,7 +574,6 @@ export default function PlatformPage() {
                   key={s.id}
                   className="glass-card rounded-2xl border border-border bg-card overflow-hidden transition-all duration-200 hover:border-blue-500/30"
                 >
-                  {/* Suggestion Card Header */}
                   <div
                     className="p-4 flex items-start justify-between gap-3 cursor-pointer select-none hover:bg-muted/20 transition-colors"
                     onClick={() => setExpanded(isExpanded ? null : s.id)}
@@ -462,7 +628,6 @@ export default function PlatformPage() {
                     </div>
                   </div>
 
-                  {/* Expanded Content Editor */}
                   {isExpanded && (
                     <div className="p-4 border-t border-border bg-muted/10 space-y-3">
                       <div className="flex items-center justify-between">
@@ -626,53 +791,76 @@ export default function PlatformPage() {
               </p>
             </div>
           ) : (
-            publishedPosts.map((post, idx) => (
-              <div key={post.id} className="glass-card rounded-2xl p-5 border border-border bg-card space-y-3">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="px-2.5 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold rounded-md border border-emerald-500/20 flex items-center gap-1">
-                    <CheckCircle2 className="h-3 w-3" />
-                    Published Live
-                  </span>
-                  <span className="text-muted-foreground font-medium">
-                    {post.publishedAt ? new Date(post.publishedAt).toLocaleDateString() : 'Just now'}
-                  </span>
-                </div>
+            publishedPosts.map((post) => {
+              const postUrl = post.platformPostUrl || post.metadata?.linkedInUrl ||
+                (post.metadata?.linkedInPostId ? `https://www.linkedin.com/feed/update/${post.metadata.linkedInPostId}` : null);
+              const hasReadableMetrics =
+                post.engagementSync?.status === 'ok' || post.engagementSync?.cached === true;
+              const likes = hasReadableMetrics && typeof post.metadata?.likes === 'number' ? post.metadata.likes : '—';
+              const commentCount =
+                hasReadableMetrics && typeof post.metadata?.comments === 'number' ? post.metadata.comments : '—';
 
-                <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap bg-muted/20 p-3.5 rounded-xl border border-border/40">
-                  {post.content}
-                </p>
+              return (
+                <div key={post.id} className="glass-card rounded-2xl p-5 border border-border bg-card space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="px-2.5 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold rounded-md border border-emerald-500/20 flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Published Live
+                    </span>
+                    <span className="text-muted-foreground font-medium">
+                      {post.publishedAt ? new Date(post.publishedAt).toLocaleDateString() : 'Just now'}
+                    </span>
+                  </div>
 
-                {/* Simulated Realtime Analytics Bar */}
-                <div className="grid grid-cols-4 gap-2 pt-2 border-t border-border text-xs">
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                    <Eye className="h-3.5 w-3.5 text-blue-500" />
-                    <span className="font-semibold text-foreground">{1420 + idx * 310}</span>
-                    <span className="text-[10px]">Views</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                    <ThumbsUp className="h-3.5 w-3.5 text-emerald-500" />
-                    <span className="font-semibold text-foreground">{84 + idx * 12}</span>
-                    <span className="text-[10px]">Likes</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                    <MessageSquare className="h-3.5 w-3.5 text-amber-500" />
-                    <span className="font-semibold text-foreground">{18 + idx * 4}</span>
-                    <span className="text-[10px]">Comments</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-muted-foreground justify-end">
-                    <a
-                      href="https://linkedin.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-500 font-semibold text-[11px] flex items-center gap-1"
+                  <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap bg-muted/20 p-3.5 rounded-xl border border-border/40">
+                    {post.content}
+                  </p>
+
+                  {post.engagementSync && post.engagementSync.status !== 'ok' ? (
+                    <InlineNotice
+                      title={post.engagementSync.cached ? 'Showing last synced engagement' : 'Live engagement unavailable'}
+                      tone="warning"
+                      icon={<AlertCircle className="h-4 w-4" />}
                     >
-                      <span>View</span>
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
+                      {post.engagementSync.message || 'Reconnect LinkedIn or enable engagement read access to sync this post.'}
+                    </InlineNotice>
+                  ) : null}
+
+                  <div className="grid grid-cols-2 gap-3 border-t border-border pt-3 text-xs sm:grid-cols-4">
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <Eye className="h-3.5 w-3.5" />
+                      <span className="font-semibold text-foreground">—</span>
+                      <span className="text-[10px]">Views</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <ThumbsUp className="h-3.5 w-3.5 text-emerald-500" />
+                      <span className="font-semibold text-foreground">{likes}</span>
+                      <span className="text-[10px]">Reactions</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <MessageSquare className="h-3.5 w-3.5 text-amber-500" />
+                      <span className="font-semibold text-foreground">{commentCount}</span>
+                      <span className="text-[10px]">Comments</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-muted-foreground justify-end">
+                      {postUrl ? (
+                        <a
+                          href={postUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-[11px] font-semibold text-foreground underline decoration-border underline-offset-4 hover:decoration-primary"
+                        >
+                          <span>Open post</span>
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : (
+                        <span className="text-[10px]">Link unavailable</span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       )}
@@ -741,6 +929,160 @@ export default function PlatformPage() {
                 </div>
               </div>
             ))
+          )}
+        </div>
+      )}
+
+      {/* ── TAB 5: COMMENTS & AUTO-REPLIES ───────────────────────────── */}
+      {activeTab === 'comments' && (
+        <div className="space-y-4">
+          {commentsData?.sync.status && commentsData.sync.status !== 'ok' ? (
+            <InlineNotice
+              title={commentsData.sync.partial ? 'Some comments could not sync' : 'Real comments are unavailable'}
+              tone="warning"
+              icon={<AlertCircle className="h-4 w-4" />}
+            >
+              {commentsData.sync.message || 'Reconnect LinkedIn or enable engagement read access, then try again.'}
+            </InlineNotice>
+          ) : null}
+          {replyError ? (
+            <InlineNotice title="Reply was not published" tone="danger" icon={<AlertCircle className="h-4 w-4" />}>
+              {replyError}
+            </InlineNotice>
+          ) : null}
+          {commentsList.length === 0 ? (
+            <div className="glass-card rounded-2xl p-12 text-center border border-border bg-card">
+              <MessageCircle className="h-8 w-8 text-blue-500/60 mx-auto mb-2" />
+              <h3 className="font-bold text-sm text-foreground">No Comments Yet</h3>
+              <p className="text-xs text-muted-foreground mt-1">
+                Real comments on your published LinkedIn posts will appear here. AI replies are generated only when you ask.
+              </p>
+            </div>
+          ) : (
+            commentsList.map((cmt) => {
+              const isSent = sentReplies.has(cmt.id) || cmt.status === 'sent';
+              const currentReplyText = editingReply[cmt.id] ?? cmt.aiReplyText;
+
+              return (
+                <div key={cmt.id} className="glass-card rounded-2xl p-5 border border-border bg-card space-y-4">
+                  {/* Target Post Header Badge */}
+                  <div className="flex items-center justify-between border-b border-border pb-3">
+                    <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-500/20 truncate max-w-xl">
+                      On Post: "{cmt.postTitle}"
+                    </span>
+                    <span className="text-[11px] text-muted-foreground shrink-0 font-medium">
+                      {cmt.createdAt
+                        ? new Date(cmt.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+                        : 'Time unavailable'}
+                    </span>
+                  </div>
+
+                  {/* Original Commenter Info & Body */}
+                  <div className="flex items-start gap-3 bg-muted/20 p-3.5 rounded-xl border border-border/50">
+                    {cmt.commenterAvatar ? (
+                      <img
+                        src={cmt.commenterAvatar}
+                        alt={cmt.commenterName}
+                        className="h-9 w-9 shrink-0 rounded-xl border border-border object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-foreground text-[10px] font-black text-background">
+                        LI
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-xs text-foreground">{cmt.commenterName}</h4>
+                        {cmt.commenterHeadline ? <span className="truncate text-[10px] text-muted-foreground">{cmt.commenterHeadline}</span> : null}
+                      </div>
+                      <p className="text-xs text-foreground mt-1 leading-relaxed">{cmt.commentText}</p>
+                    </div>
+                  </div>
+
+                  {/* AI Auto-Reply Section */}
+                  <div className="pl-4 border-l-2 border-blue-500/40 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Bot className="h-3.5 w-3.5 text-blue-500" />
+                        <span className="text-xs font-bold text-foreground">AI Agent Response</span>
+                        {isSent ? (
+                          <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold rounded-md border border-emerald-500/20 flex items-center gap-1">
+                            <Check className="h-3 w-3" />
+                            Published to LinkedIn
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-semibold rounded-md border border-amber-500/20">
+                            Manual review
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {!isSent ? (
+                      <div className="space-y-3">
+                        <textarea
+                          value={currentReplyText}
+                          onChange={(e) =>
+                            setEditingReply((prev) => ({ ...prev, [cmt.id]: e.target.value }))
+                          }
+                          rows={3}
+                          placeholder="Generate a reply or write your own…"
+                          className="product-input min-h-24 resize-y text-xs leading-relaxed"
+                        />
+
+                        <div className="flex items-center justify-between pt-1">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const res = await fetch('/api/comments', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  credentials: 'include',
+                                  body: JSON.stringify({
+                                    action: 'generate_reply',
+                                    commentText: cmt.commentText,
+                                    postText: cmt.postTitle,
+                                  }),
+                                });
+                                const data = await res.json();
+                                if (!res.ok) throw new Error(data.error?.message || 'Reply generation failed.');
+                                if (data.data?.replyText) {
+                                  setEditingReply((prev) => ({ ...prev, [cmt.id]: data.data.replyText }));
+                                }
+                              } catch (error) {
+                                setReplyError(error instanceof Error ? error.message : 'Reply generation failed.');
+                              }
+                            }}
+                            className="px-3 py-1.5 bg-muted hover:bg-accent text-foreground rounded-lg text-xs font-medium transition-colors flex items-center gap-1"
+                          >
+                            <Wand2 className="h-3 w-3 text-blue-500" />
+                            <span>{currentReplyText ? 'Regenerate reply' : 'Generate reply'}</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleSendCommentReply(cmt, currentReplyText)}
+                            disabled={sendingReplyId === cmt.id || !currentReplyText.trim()}
+                            className="product-button-primary min-h-8 px-3 py-1.5 text-xs"
+                          >
+                            {sendingReplyId === cmt.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Send className="h-3.5 w-3.5" />
+                            )}
+                            <span>Post Reply to LinkedIn</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded-xl text-xs text-foreground leading-relaxed font-sans">
+                        {currentReplyText}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
       )}

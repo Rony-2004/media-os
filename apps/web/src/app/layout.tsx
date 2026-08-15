@@ -6,8 +6,8 @@ import { Providers } from '@/components/providers';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'AI Social OS',
-  description: 'Your AI-powered social media operating system',
+  title: { default: 'ConnectUs', template: '%s · ConnectUs' },
+  description: 'A focused operating system for creating, publishing, and understanding social content.',
 };
 
 export default function RootLayout({

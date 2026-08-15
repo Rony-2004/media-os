@@ -3,14 +3,32 @@
  * Primary model: gemini-3.6-flash
  */
 
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const DEFAULT_OPENROUTER_MODEL = 'openrouter/auto';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 export function getModel(): string {
+  if (hasUsableKey(process.env.OPENROUTER_API_KEY)) {
+    return process.env.OPENROUTER_MODEL?.trim() || DEFAULT_OPENROUTER_MODEL;
+  }
+
   const model = process.env.AI_MODEL;
   if (!model || model === 'gemini-2.5-flash' || !model.startsWith('gemini')) {
     return 'gemini-3.6-flash';
   }
   return model;
+}
+
+function getGeminiModel(): string {
+  const model = process.env.AI_MODEL;
+  if (!model || model === 'gemini-2.5-flash' || !model.startsWith('gemini')) {
+    return 'gemini-3.6-flash';
+  }
+  return model;
+}
+
+function hasUsableKey(key: string | undefined): key is string {
+  return Boolean(key && !key.includes('your-key'));
 }
 
 export interface AIMessage {
@@ -26,16 +44,56 @@ export interface AICallOptions {
 }
 
 /**
- * Call Gemini / AI API and return text response with smart fallback recovery.
+ * Call the configured AI providers and return their text response.
  */
 export async function callAI(options: AICallOptions): Promise<string> {
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
 
-  // 1. Try Gemini API first if GEMINI_API_KEY is provided
+  // 1. Use OpenRouter as the primary provider when configured.
+  if (hasUsableKey(openRouterKey)) {
+    try {
+      const res = await fetch(OPENROUTER_API_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${openRouterKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': process.env.FRONTEND_URL || 'http://localhost:3000',
+          'X-Title': 'ConnectUs',
+        },
+        body: JSON.stringify({
+          model: getModel(),
+          messages: [
+            ...(options.system ? [{ role: 'system' as const, content: options.system }] : []),
+            ...options.messages,
+          ],
+          max_tokens: options.maxTokens ?? 1024,
+          temperature: options.temperature ?? 0.7,
+        }),
+      });
+
+      if (res.ok) {
+        const data = (await res.json()) as {
+          choices?: Array<{ message?: { content?: string } }>;
+        };
+        const text = data.choices?.[0]?.message?.content;
+        if (text) return text.trim();
+      } else {
+        const errorBody = (await res.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        console.warn(`[OpenRouter API ${res.status}]: ${errorBody?.error?.message || res.statusText}`);
+      }
+    } catch (error: unknown) {
+      console.warn('[OpenRouter Warning]:', error instanceof Error ? error.message : 'Request failed');
+    }
+  }
+
+  // 2. Try Gemini API if GEMINI_API_KEY is provided.
   if (geminiKey && !geminiKey.includes('your-key')) {
     try {
-      const model = getModel();
+      const model = getGeminiModel();
       const url = `${GEMINI_API_URL}/${model}:generateContent?key=${geminiKey}`;
 
       const contents = options.messages.map((m) => ({
@@ -67,7 +125,7 @@ export async function callAI(options: AICallOptions): Promise<string> {
     }
   }
 
-  // 2. Try Anthropic if ANTHROPIC_API_KEY is available
+  // 3. Try Anthropic if ANTHROPIC_API_KEY is available
   if (anthropicKey && !anthropicKey.includes('your-key')) {
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -95,27 +153,5 @@ export async function callAI(options: AICallOptions): Promise<string> {
     }
   }
 
-  // 3. Smart Topic-Aware Fallback
-  return generateSmartFallback(options);
-}
-
-function generateSmartFallback(options: AICallOptions): string {
-  const prompt = options.messages?.[0]?.content || '';
-  const match = prompt.match(/trending topic: "([^"]+)"|topic: "([^"]+)"|about:? "([^"]+)"/i);
-  const title = match ? (match[1] || match[2] || match[3]) : '';
-  const lower = title.toLowerCase();
-
-  if (lower.includes('bcrypt') || lower.includes('hash') || lower.includes('security')) {
-    return `Fast hashing algorithms like SHA-256 are great for data integrity checks, but dangerous for user passwords. Because a modern GPU can compute billions of SHA hashes per second, brute-forcing passwords becomes trivially easy.\n\nBcrypt solves this by being intentionally slow. It uses a configurable "cost factor" ($2^{cost}$ rounds of computation) that doubles hashing time with every single increment.\n\nBy increasing the cost factor as hardware speeds up over time, password cracking remains computationally infeasible for attackers.\n\nWhat cost factor or hashing algorithm is your backend running in production?\n\n#SoftwareEngineering #Backend #Security #Cryptography`;
-  }
-
-  if (lower.includes('anthropic') || lower.includes('claude') || lower.includes('context') || lower.includes('ai')) {
-    return `Building long-context AI applications comes down to a major systems bottleneck: Memory Bandwidth.\n\nAs prompt context windows expand to 200k+ tokens, storing and fetching Key-Value (KV) cache tensors rapidly saturates GPU VRAM bandwidth.\n\nModern architectures solve this by compressing KV-cache tensors and utilizing tiling techniques in ultra-fast SRAM rather than hitting main GPU memory.\n\nHow is your team optimizing context window performance in production?\n\n#SoftwareEngineering #AI #MachineLearning #Backend`;
-  }
-
-  if (lower.includes('postgres') || lower.includes('database') || lower.includes('mvcc') || lower.includes('log')) {
-    return `PostgreSQL handles massive concurrent traffic without blocking readers or writers using Multi-Version Concurrency Control (MVCC).\n\nInstead of locking database rows during updates, PostgreSQL writes a new version of the row and tracks transaction IDs (XMIN/XMAX). Readers continue seeing consistent snapshots without waiting for locks to release.\n\nTo ensure durability, every transaction is appended to Write-Ahead Logs (WAL) before pages hit disk.\n\nHow do you handle database concurrency bottlenecks in high-load services?\n\n#SoftwareEngineering #PostgreSQL #Database #SystemDesign`;
-  }
-
-  return `Building scalable software systems requires balancing clean architecture with performance trade-offs.\n\nWhether optimizing database queries, managing cache invalidation, or structuring API endpoints, small choices in data structures have compound impacts on production latency.\n\nWhat architectural trade-offs are you evaluating in your current codebase?\n\n#SoftwareEngineering #Backend #SystemDesign #Coding`;
+  throw new Error('AI service is unavailable. Check the configured provider and try again.');
 }

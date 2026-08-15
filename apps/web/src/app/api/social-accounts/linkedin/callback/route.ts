@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { linkedinStateStore } from '../auth/route';
+import { linkedinStateStore } from '@/lib/linkedin-store';
+import { LINKEDIN_OAUTH_SCOPES } from '@/lib/linkedin/oauth';
 
 const LINKEDIN_TOKEN_URL = 'https://www.linkedin.com/oauth/v2/accessToken';
 const LINKEDIN_USERINFO_URL = 'https://api.linkedin.com/v2/userinfo';
+
+interface LinkedInTokenResponse {
+  access_token: string;
+  expires_in?: number;
+  refresh_token?: string;
+  scope?: string;
+}
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -53,7 +61,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(new URL('/accounts?error=token_exchange_failed', req.url));
     }
 
-    const tokens = await tokenResponse.json();
+    const tokens = (await tokenResponse.json()) as LinkedInTokenResponse;
 
     // Fetch LinkedIn profile
     const profileResponse = await fetch(LINKEDIN_USERINFO_URL, {
@@ -84,6 +92,7 @@ export async function GET(req: NextRequest) {
           : null,
         providerName: profile.name,
         providerAvatar: profile.picture,
+        scopes: tokens.scope || LINKEDIN_OAUTH_SCOPES.join(' '),
         status: 'active',
         connectedAt: new Date(),
       },
@@ -98,7 +107,7 @@ export async function GET(req: NextRequest) {
         expiresAt: tokens.expires_in
           ? new Date(Date.now() + tokens.expires_in * 1000)
           : null,
-        scopes: 'openid,profile,email,w_member_social',
+        scopes: tokens.scope || LINKEDIN_OAUTH_SCOPES.join(' '),
         status: 'active',
       },
     });

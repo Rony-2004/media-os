@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { ArrowRight, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useLogin } from '@/hooks/use-auth';
 
 export default function LoginPage() {
@@ -10,82 +11,95 @@ export default function LoginPage() {
   const login = useLogin();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     try {
-      await login.mutateAsync({ email, password });
-      router.push('/dashboard');
+      const response = await login.mutateAsync({ email, password });
+      router.push(response?.user?.role === 'ADMIN' ? '/admin' : '/dashboard');
     } catch {
-      // error handled by mutation
+      // The mutation exposes the server message below.
     }
   };
 
   return (
-    <div className="bg-card rounded-lg border p-8 shadow-sm">
-      <div className="text-center mb-6">
-        <h1 className="text-2xl font-bold">Welcome back</h1>
-        <p className="text-muted-foreground mt-1">
-          Sign in to your AI Social OS account
+    <div className="animate-fade-in">
+      <div className="mb-8">
+        <p className="dot-label mb-3">Member access</p>
+        <h1 className="text-3xl font-black tracking-[-0.04em]">Welcome back.</h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          Sign in to continue to your content workspace.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {login.error && (
-          <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md">
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {login.error ? (
+          <div className="rounded-xl border border-primary/25 bg-primary/10 p-3 text-sm text-primary" role="alert">
             {login.error.message}
           </div>
-        )}
+        ) : null}
 
-        <div>
-          <label htmlFor="email" className="block text-sm font-medium mb-1">
-            Email
-          </label>
+        <label className="block" htmlFor="email">
+          <span className="mb-2 block font-mono text-[10px] font-bold uppercase tracking-[0.14em]">
+            Email address
+          </span>
           <input
             id="email"
             type="email"
+            autoComplete="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(event) => setEmail(event.target.value)}
             required
-            className="w-full px-3 py-2 border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+            className="product-input"
             placeholder="you@example.com"
           />
-        </div>
+        </label>
 
-        <div>
-          <label htmlFor="password" className="block text-sm font-medium mb-1">
+        <label className="block" htmlFor="password">
+          <span className="mb-2 block font-mono text-[10px] font-bold uppercase tracking-[0.14em]">
             Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className="w-full px-3 py-2 border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
-            placeholder="••••••••"
-          />
-        </div>
+          </span>
+          <span className="relative block">
+            <input
+              id="password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+              className="product-input pr-12"
+              placeholder="Enter your password"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((visible) => !visible)}
+              onMouseDown={(event) => event.preventDefault()}
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              aria-pressed={showPassword}
+              className="absolute inset-y-0 right-0 flex w-12 items-center justify-center text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset"
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+            </button>
+          </span>
+        </label>
 
         <div className="flex justify-end">
-          <Link href="/forgot-password" className="text-sm text-primary hover:underline">
+          <Link href="/forgot-password" className="text-xs font-bold underline decoration-border underline-offset-4 hover:decoration-primary">
             Forgot password?
           </Link>
         </div>
 
-        <button
-          type="submit"
-          disabled={login.isPending}
-          className="w-full py-2 px-4 bg-primary text-primary-foreground rounded-md font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {login.isPending ? 'Signing in...' : 'Sign in'}
+        <button type="submit" disabled={login.isPending} className="product-button-primary w-full">
+          {login.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+          {login.isPending ? 'Signing in…' : 'Sign in'}
         </button>
       </form>
 
-      <p className="text-center text-sm text-muted-foreground mt-6">
-        Don&apos;t have an account?{' '}
-        <Link href="/register" className="text-primary hover:underline">
-          Register
+      <p className="mt-7 text-center text-xs text-muted-foreground">
+        New to ConnectUs?{' '}
+        <Link href="/register" className="font-bold text-foreground underline decoration-border underline-offset-4 hover:decoration-primary">
+          Create an account
         </Link>
       </p>
     </div>

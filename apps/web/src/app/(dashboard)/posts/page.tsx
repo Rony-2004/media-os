@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useConnectedAccounts } from '@/hooks/use-connected-accounts';
+import { NothingMark } from '@/components/brand/marks';
 
 export default function PostsRedirectPage() {
   const router = useRouter();
@@ -18,8 +19,9 @@ export default function PostsRedirectPage() {
   }, [accounts, isLoading, router]);
 
   return (
-    <div className="flex items-center justify-center min-h-[200px]">
-      <div className="animate-pulse text-muted-foreground text-sm">Redirecting...</div>
+    <div className="flex min-h-[300px] flex-col items-center justify-center gap-4">
+      <NothingMark className="animate-pulse" />
+      <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Opening workspace…</div>
     </div>
   );
 }

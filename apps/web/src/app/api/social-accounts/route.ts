@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
       status: true,
       connectedAt: true,
       expiresAt: true,
+      scopes: true,
     },
   });
 

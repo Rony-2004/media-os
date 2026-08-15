@@ -42,6 +42,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Check if account is blocked by Admin
+    if ((user as any).isBlocked) {
+      return NextResponse.json(
+        { error: { code: 'ACCOUNT_BLOCKED', message: 'Your account has been blocked by an administrator. Please contact support.' } },
+        { status: 403 }
+      );
+    }
+
     // Check email verified
     if (!user.emailVerified) {
       return NextResponse.json(
@@ -59,7 +67,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Generate tokens
-    const tokenPayload = { userId: user.id, email: user.email };
+    const tokenPayload = { userId: user.id, email: user.email, role: (user as any).role || 'USER' };
     const accessToken = generateAccessToken(tokenPayload);
     const refreshTokenRaw = generateSecureToken();
 
@@ -85,6 +93,10 @@ export async function POST(req: NextRequest) {
           name: user.name,
           email: user.email,
           avatar: user.avatar,
+          role: (user as any).role || 'USER',
+          plan: (user as any).plan || 'FREE',
+          weeklyPostLimit: (user as any).weeklyPostLimit || 2,
+          isBlocked: (user as any).isBlocked || false,
         },
       },
     });

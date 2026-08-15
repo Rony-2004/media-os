@@ -1,27 +1,20 @@
 'use client';
 
 import { useSession } from '@/hooks/use-auth';
-import { User, Shield, Bell, Key, Trash2 } from 'lucide-react';
+import { User, Shield, Trash2 } from 'lucide-react';
+import { PageHeader, StatusBadge } from '@/components/ui/product';
 
 export default function SettingsPage() {
   const { data: user } = useSession();
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 pb-12">
-      {/* Header Banner */}
-      <div className="glass-card rounded-2xl p-6 sm:p-8 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white relative overflow-hidden">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center text-white font-bold text-lg">
-            {user?.name?.charAt(0)?.toUpperCase() || 'U'}
-          </div>
-          <div>
-            <h1 className="text-2xl font-extrabold tracking-tight">Account & Platform Settings</h1>
-            <p className="text-slate-300 text-xs mt-0.5">
-              Manage your personal credentials, active sessions, security preferences, and data privacy.
-            </p>
-          </div>
-        </div>
-      </div>
+    <div className="mx-auto max-w-5xl space-y-8 pb-12">
+      <PageHeader
+        eyebrow="Preferences"
+        title="Settings"
+        description="Manage your account profile, session security, and data controls."
+        actions={<StatusBadge tone="success">Active session</StatusBadge>}
+      />
 
       <div className="space-y-6">
         {/* Profile Card */}
