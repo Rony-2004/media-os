@@ -33,7 +33,35 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**"]
+      "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**"],
+      "env": [
+        "NODE_ENV",
+        "FRONTEND_URL",
+        "LOG_LEVEL",
+        "DATABASE_URL",
+        "JWT_ACCESS_SECRET",
+        "JWT_REFRESH_SECRET",
+        "ACCESS_TOKEN_EXPIRES_IN",
+        "REFRESH_TOKEN_EXPIRES_IN",
+        "COOKIE_SECRET",
+        "LINKEDIN_CLIENT_ID",
+        "LINKEDIN_CLIENT_SECRET",
+        "LINKEDIN_CALLBACK_URL",
+        "EMAIL_HOST",
+        "EMAIL_PORT",
+        "EMAIL_USER",
+        "EMAIL_PASSWORD",
+        "EMAIL_FROM",
+        "AZURE_OPENAI_ENDPOINT",
+        "AZURE_OPENAI_API_KEY",
+        "AZURE_OPENAI_DEPLOYMENT",
+        "AZURE_OPENAI_API_VERSION",
+        "OPENROUTER_API_KEY",
+        "OPENROUTER_MODEL",
+        "AI_MODEL",
+        "GEMINI_API_KEY",
+        "ANTHROPIC_API_KEY"
+      ]
     },
     "lint": {
       "dependsOn": ["^lint"]
