@@ -2,46 +2,101 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   ConnectUs — design tokens
+
+   Monochrome base, one red signal colour. Warm off-white and near-black
+   surfaces, hairline borders, dot-matrix texture. No gradients, no glass,
+   no glow. Red is reserved for primary actions, live indicators, focus, and
+   destructive states — nothing else.
+   ========================================================================== */
+
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 224 71.4% 4.1%;
-    --card: 0 0% 100%;
-    --card-foreground: 224 71.4% 4.1%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 215 27.9% 96.9%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 215 27.9% 96.9%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 215 27.9% 96.9%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.75rem;
+    color-scheme: light;
+
+    --background: 40 20% 97.5%;
+    --foreground: 30 6% 7%;
+
+    --surface: 0 0% 100%;
+    --surface-2: 40 16% 95.5%;
+    --surface-3: 40 12% 92%;
+
+    --card: var(--surface);
+    --card-foreground: var(--foreground);
+    --popover: 0 0% 100%;
+    --popover-foreground: var(--foreground);
+
+    /* The single signal colour. */
+    --primary: 357 78% 47%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 40 16% 94%;
+    --secondary-foreground: 30 6% 10%;
+    --muted: 40 16% 94.5%;
+    --muted-foreground: 30 4% 42%;
+    --accent: 40 16% 94%;
+    --accent-foreground: 30 6% 10%;
+
+    --success: 150 32% 33%;
+    --success-foreground: 0 0% 100%;
+    --warning: 36 62% 42%;
+    --warning-foreground: 0 0% 100%;
+    --info: 30 4% 42%;
+    --info-foreground: 0 0% 100%;
+    --destructive: 357 78% 47%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 38 10% 87%;
+    --input: 38 10% 82%;
+    --ring: 357 78% 47%;
+
+    --dot: 30 6% 7% / 0.16;
+    --shadow-color: 30 10% 20%;
+
+    --radius: 0.375rem;
   }
 
   .dark {
-    --background: 224 71.4% 4.1%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 47.4% 8%;
-    --card-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    color-scheme: dark;
+
+    --background: 30 4% 5%;
+    --foreground: 40 14% 95%;
+
+    --surface: 30 4% 7.5%;
+    --surface-2: 30 4% 10.5%;
+    --surface-3: 30 4% 14%;
+
+    --card: var(--surface);
+    --card-foreground: var(--foreground);
+    --popover: 30 4% 9%;
+    --popover-foreground: var(--foreground);
+
+    --primary: 357 84% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 30 4% 14%;
+    --secondary-foreground: 40 14% 95%;
+    --muted: 30 4% 12%;
+    --muted-foreground: 35 5% 60%;
+    --accent: 30 4% 14%;
+    --accent-foreground: 40 14% 95%;
+
+    --success: 150 38% 48%;
+    --success-foreground: 30 4% 5%;
+    --warning: 38 72% 55%;
+    --warning-foreground: 30 4% 5%;
+    --info: 35 5% 62%;
+    --info-foreground: 30 4% 5%;
+    --destructive: 357 84% 58%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 30 4% 16%;
+    --input: 30 4% 22%;
+    --ring: 357 84% 55%;
+
+    --dot: 40 14% 95% / 0.14;
+    --shadow-color: 0 0% 0%;
   }
 
   * {
@@ -51,22 +106,37 @@
   html {
     min-width: 320px;
     background: hsl(var(--background));
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
   }
 
   body {
     @apply bg-background text-foreground antialiased;
     min-height: 100vh;
-    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
     text-rendering: optimizeLegibility;
   }
 
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
   ::selection {
-    background: hsl(var(--primary) / 0.2);
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
   }
 
   :focus-visible {
     outline: 2px solid hsl(var(--ring));
     outline-offset: 2px;
+    border-radius: 2px;
   }
 
   button,
@@ -77,88 +147,237 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  button,
-  a {
-    transition-duration: 160ms;
+  /* Range inputs — square track, square thumb. */
+  input[type='range'] {
+    @apply h-1 w-full cursor-pointer appearance-none rounded-none bg-border;
+    background-image: linear-gradient(hsl(var(--primary)), hsl(var(--primary)));
+    background-repeat: no-repeat;
   }
 
-  input,
-  textarea,
-  select {
-    @apply text-sm;
+  input[type='range']::-webkit-slider-thumb {
+    @apply h-4 w-4 appearance-none rounded-none border-2 border-background bg-foreground;
+    transition: transform 140ms ease;
+  }
+
+  input[type='range']::-webkit-slider-thumb:hover {
+    @apply bg-primary;
+    transform: scale(1.15);
+  }
+
+  input[type='range']::-moz-range-thumb {
+    @apply h-4 w-4 rounded-none border-2 border-background bg-foreground;
+  }
+
+  ::-webkit-scrollbar {
+    width: 11px;
+    height: 11px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.3);
+    border: 4px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.55);
+    background-clip: content-box;
   }
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes signalPulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 hsl(var(--primary) / 0.35);
-  }
-  50% {
-    box-shadow: 0 0 0 5px transparent;
-  }
-}
+/* ==========================================================================
+   Components
+   ========================================================================== */
 
 @layer components {
+  /* --- Surfaces ---------------------------------------------------------- */
+
+  .surface {
+    @apply relative rounded-lg border border-border bg-card text-card-foreground;
+  }
+
+  .surface-interactive {
+    @apply surface transition-colors duration-200;
+  }
+
+  .surface-interactive:hover {
+    @apply border-foreground/25;
+  }
+
+  /* Legacy aliases so untouched markup keeps rendering correctly. */
+  .product-panel,
+  .glass-card,
+  .glass-panel {
+    @apply surface;
+  }
+
+  .glass {
+    @apply border border-border bg-card;
+  }
+
+  /* --- Texture ----------------------------------------------------------- */
+
+  .dots {
+    background-image: radial-gradient(hsl(var(--dot)) 1px, transparent 1px);
+    background-size: 8px 8px;
+  }
+
+  .dots-lg {
+    background-image: radial-gradient(hsl(var(--dot)) 1.5px, transparent 1.5px);
+    background-size: 16px 16px;
+  }
+
+  .dot-grid {
+    @apply dots-lg;
+  }
+
   .app-grid {
     background-color: hsl(var(--background));
   }
 
-  .product-panel,
-  .glass-card,
-  .glass-panel {
-    @apply border border-border bg-card text-card-foreground;
-    box-shadow: 0 1px 2px hsl(var(--foreground) / 0.035);
+  /* Corner registration ticks — a technical-drawing frame. */
+  .ticked::before,
+  .ticked::after {
+    content: '';
+    @apply pointer-events-none absolute h-2.5 w-2.5 border-foreground/30;
   }
 
-  .product-input {
-    @apply w-full rounded-xl border border-input bg-background px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/70;
-    @apply focus:border-primary/70 focus:outline-none focus:ring-2 focus:ring-primary/15;
+  .ticked::before {
+    @apply -left-px -top-px border-l border-t;
   }
 
-  .product-button {
-    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold;
-    @apply disabled:pointer-events-none disabled:opacity-45;
+  .ticked::after {
+    @apply -bottom-px -right-px border-b border-r;
   }
 
-  .product-button-primary {
-    @apply product-button bg-primary text-primary-foreground hover:bg-primary/90;
+  /* --- Type -------------------------------------------------------------- */
+
+  .display {
+    @apply font-bold tracking-[-0.045em];
+    line-height: 0.94;
   }
 
-  .product-button-secondary {
-    @apply product-button border border-border bg-card text-foreground hover:bg-muted;
+  .eyebrow {
+    @apply inline-flex items-center gap-2 font-mono text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground;
   }
 
   .dot-label {
-    @apply inline-flex items-center gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground;
+    @apply eyebrow;
   }
 
   .dot-label::before {
     content: '';
     @apply h-1.5 w-1.5 rounded-full bg-primary;
   }
+
+  /* Mono key/value rows used across spec tables. */
+  .spec-row {
+    @apply flex items-baseline justify-between gap-4 border-b border-border py-2.5 font-mono text-[11px] uppercase tracking-[0.12em] last:border-b-0;
+  }
+
+  .spec-key {
+    @apply text-muted-foreground;
+  }
+
+  .spec-value {
+    @apply text-right font-medium text-foreground;
+  }
+
+  /* --- Buttons ----------------------------------------------------------- */
+
+  .btn {
+    @apply relative inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-semibold;
+    @apply transition-colors duration-150;
+    @apply disabled:pointer-events-none disabled:opacity-40;
+  }
+
+  .btn-primary {
+    @apply btn bg-primary text-primary-foreground hover:bg-primary/90;
+  }
+
+  .btn-secondary {
+    @apply btn border border-input bg-transparent text-foreground hover:border-foreground/40 hover:bg-muted;
+  }
+
+  .btn-ghost {
+    @apply btn text-muted-foreground hover:bg-muted hover:text-foreground;
+  }
+
+  .btn-danger {
+    @apply btn border border-destructive/40 bg-transparent text-destructive hover:bg-destructive hover:text-destructive-foreground;
+  }
+
+  .btn-contrast {
+    @apply btn bg-foreground text-background hover:bg-foreground/85;
+  }
+
+  /* Legacy aliases. */
+  .product-button {
+    @apply btn min-h-10 px-4;
+  }
+
+  .product-button-primary {
+    @apply btn-primary min-h-10 px-4;
+  }
+
+  .product-button-secondary {
+    @apply btn-secondary min-h-10 px-4;
+  }
+
+  /* --- Form controls ----------------------------------------------------- */
+
+  .field {
+    @apply w-full rounded-md border border-input bg-background px-3 py-2.5 text-sm text-foreground;
+    @apply placeholder:text-muted-foreground/55 transition-colors duration-150;
+    @apply focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary;
+    @apply disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .product-input {
+    @apply field;
+  }
+
+  select.field {
+    @apply cursor-pointer appearance-none bg-no-repeat pr-9;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='square'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 0.75rem center;
+  }
+
+  /* --- Bits -------------------------------------------------------------- */
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded border px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.12em];
+  }
+
+  .kbd {
+    @apply inline-flex h-5 min-w-5 items-center justify-center rounded border border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground;
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden rounded bg-muted;
+  }
+
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0 -translate-x-full;
+    background: linear-gradient(90deg, transparent, hsl(var(--foreground) / 0.05), transparent);
+    animation: shimmer 2s ease-in-out infinite;
+  }
+
+  .rule {
+    @apply h-px w-full bg-border;
+  }
 }
 
+/* ==========================================================================
+   Utilities
+   ========================================================================== */
+
 @layer utilities {
-  .animate-fade-in {
-    animation: fadeIn 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
-  }
-
-  .signal-pulse {
-    animation: signalPulse 1.8s ease-in-out infinite;
-  }
-
   .scrollbar-none {
     scrollbar-width: none;
   }
@@ -166,13 +385,48 @@
   .scrollbar-none::-webkit-scrollbar {
     display: none;
   }
+
+  /* A live indicator: solid red dot with a brief expanding ring. */
+  .signal-pulse {
+    animation: pulse-ring 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+  }
+
+  .mask-fade-b {
+    -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 55%, transparent 100%);
+  }
+
+  .mask-fade-x {
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .stagger > * {
+    animation: fade-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .stagger > *:nth-child(1) { animation-delay: 30ms; }
+  .stagger > *:nth-child(2) { animation-delay: 70ms; }
+  .stagger > *:nth-child(3) { animation-delay: 110ms; }
+  .stagger > *:nth-child(4) { animation-delay: 150ms; }
+  .stagger > *:nth-child(5) { animation-delay: 190ms; }
+  .stagger > *:nth-child(6) { animation-delay: 230ms; }
+  .stagger > *:nth-child(7) { animation-delay: 270ms; }
+  .stagger > *:nth-child(8) { animation-delay: 310ms; }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
   *,
   *::before,
   *::after {
-    scroll-behavior: auto !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

@@ -1,10 +1,17 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { CalendarClock, FileCheck2, Link2, Sparkles } from 'lucide-react';
+import { CalendarClock, FileCheck2, Gauge, Info, Link2, Sparkles } from 'lucide-react';
 import { useSession } from '@/hooks/use-auth';
 import { useConnectedAccounts } from '@/hooks/use-connected-accounts';
-import { MetricCard, PageHeader, Panel, StatusBadge } from '@/components/ui/product';
+import { ButtonLink } from '@/components/ui/button';
+import {
+  MetricCard,
+  PageHeader,
+  Panel,
+  ProgressBar,
+  StatusBadge,
+} from '@/components/ui/product';
 
 interface QuotaPost {
   status: string;
@@ -25,12 +32,16 @@ export default function QuotaPage() {
 
   const weekStart = Date.now() - 7 * 24 * 60 * 60 * 1000;
   const publishedThisWeek = posts.filter(
-    (post) => post.status === 'published' && post.publishedAt && new Date(post.publishedAt).getTime() >= weekStart,
+    (post) =>
+      post.status === 'published' &&
+      post.publishedAt &&
+      new Date(post.publishedAt).getTime() >= weekStart,
   ).length;
   const scheduled = posts.filter((post) => post.status === 'scheduled').length;
   const weeklyLimit = user?.weeklyPostLimit ?? 0;
   const remaining = Math.max(weeklyLimit - publishedThisWeek, 0);
   const usage = weeklyLimit > 0 ? Math.min((publishedThisWeek / weeklyLimit) * 100, 100) : 0;
+  const tone = usage >= 100 ? 'danger' : usage >= 75 ? 'warning' : 'primary';
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 pb-12">
@@ -41,28 +52,92 @@ export default function QuotaPage() {
         actions={<StatusBadge tone="dark">{user?.plan || 'FREE'} plan</StatusBadge>}
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <MetricCard label="Published / 7 days" value={publishedThisWeek} hint={`${remaining} remaining`} icon={<FileCheck2 className="h-4 w-4" />} />
-        <MetricCard label="Weekly limit" value={weeklyLimit || '—'} hint="Posts per rolling week" icon={<CalendarClock className="h-4 w-4" />} />
-        <MetricCard label="Scheduled" value={scheduled} hint="Currently queued" icon={<Sparkles className="h-4 w-4" />} />
-        <MetricCard label="Connections" value={accounts.length} hint="Active social accounts" icon={<Link2 className="h-4 w-4" />} />
+      <div className="stagger grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <MetricCard
+          label="Published / 7 days"
+          value={publishedThisWeek}
+          hint={`${remaining} remaining`}
+          accent="success"
+          icon={<FileCheck2 className="h-4 w-4" />}
+        />
+        <MetricCard
+          label="Weekly limit"
+          value={weeklyLimit || '—'}
+          hint="Posts per rolling week"
+          accent="primary"
+          icon={<CalendarClock className="h-4 w-4" />}
+        />
+        <MetricCard
+          label="Scheduled"
+          value={scheduled}
+          hint="Currently queued"
+          accent="warning"
+          icon={<Sparkles className="h-4 w-4" />}
+        />
+        <MetricCard
+          label="Connections"
+          value={accounts.length}
+          hint="Active social accounts"
+          accent="info"
+          icon={<Link2 className="h-4 w-4" />}
+        />
       </div>
 
-      <Panel className="p-5 sm:p-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <Panel className="overflow-hidden p-6 sm:p-7">
+        <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-primary/15 blur-3xl" />
+
+        <div className="relative flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="dot-label">Weekly publishing</p>
-            <h2 className="mt-3 text-lg font-black tracking-tight">{publishedThisWeek} of {weeklyLimit || '—'} posts used</h2>
+            <h2 className="mt-3 text-2xl font-bold tracking-[-0.03em]">
+              <span className="tabular-nums">{publishedThisWeek}</span>
+              <span className="text-muted-foreground"> of {weeklyLimit || '—'} posts used</span>
+            </h2>
           </div>
-          <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">Rolling seven-day window</p>
+          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+            Rolling seven-day window
+          </span>
         </div>
-        <div className="mt-6 h-3 overflow-hidden rounded-full border border-border bg-muted p-0.5">
-          <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${usage}%` }} />
+
+        <ProgressBar value={usage} tone={tone} className="relative mt-6 h-3" />
+
+        <div className="relative mt-3 flex items-center justify-between font-mono text-[10px] text-muted-foreground">
+          <span>0</span>
+          <span>{Math.round(usage)}% used</span>
+          <span>{weeklyLimit || '—'}</span>
         </div>
-        <p className="mt-3 text-xs leading-5 text-muted-foreground">
-          AI generation and trend-monitoring meters are hidden until server-side usage tracking is available; this page does not estimate usage.
-        </p>
+
+        <div className="relative mt-6 flex items-start gap-2.5 rounded-xl border border-border bg-muted/30 p-3.5">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <p className="text-xs leading-6 text-muted-foreground">
+            AI generation and trend-monitoring meters stay hidden until server-side usage tracking is
+            available. This page never estimates a number it cannot read.
+          </p>
+        </div>
       </Panel>
+
+      {user?.plan === 'FREE' ? (
+        <Panel className="flex flex-col items-start justify-between gap-4 overflow-hidden p-6 sm:flex-row sm:items-center">
+          <div className="aurora">
+            <span className="left-[-5%] top-[-90%] h-48 w-48 animate-drift bg-primary/25" />
+          </div>
+          <div className="relative flex items-start gap-3.5">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+              <Gauge className="h-4 w-4" />
+            </span>
+            <div>
+              <h2 className="text-sm font-bold">Need a higher cadence?</h2>
+              <p className="mt-1 text-xs leading-6 text-muted-foreground">
+                Pro raises the weekly limit to 25 posts and unlocks unlimited drafts and brand voice
+                profiles.
+              </p>
+            </div>
+          </div>
+          <ButtonLink href="/settings" className="relative w-full shrink-0 sm:w-auto">
+            View plans
+          </ButtonLink>
+        </Panel>
+      ) : null}
     </div>
   );
 }

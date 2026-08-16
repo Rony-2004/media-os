@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useSession } from '@/hooks/use-auth';
 import { Sidebar } from '@/components/dashboard/sidebar';
 import { Header } from '@/components/dashboard/header';
-import { NothingMark } from '@/components/brand/marks';
+import { Logo } from '@/components/brand/marks';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { data: user, isLoading } = useSession();
@@ -21,12 +21,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (isLoading) {
     return (
-      <div className="app-grid flex min-h-screen items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <NothingMark className="animate-pulse" />
-          <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+      <div className="app-grid relative flex min-h-screen items-center justify-center">
+        <div className="relative flex flex-col items-center gap-5">
+          <div className="relative">
+            <span className="absolute -inset-4 animate-pulse rounded-full bg-primary/20 blur-2xl" />
+            <Logo className="relative h-12 w-12 animate-float" gradientId="loading-mark" />
+          </div>
+          <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
             Loading workspace
           </p>
+          <div className="skeleton h-1 w-32 rounded-full" />
         </div>
       </div>
     );
@@ -35,11 +39,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!user) return null;
 
   return (
-    <div className="app-grid flex min-h-screen">
+    <div className="app-grid relative flex min-h-screen">
       <Sidebar open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
-      <div className="min-w-0 flex-1">
+      <div className="relative z-10 flex min-w-0 flex-1 flex-col">
         <Header user={user} onMenuClick={() => setMobileNavOpen(true)} />
-        <main className="mx-auto w-full max-w-[1500px] px-4 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">
+        <main className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
           {children}
         </main>
       </div>

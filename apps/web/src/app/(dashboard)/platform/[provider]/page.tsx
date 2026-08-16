@@ -4,37 +4,49 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
-import { InlineNotice } from '@/components/ui/product';
-import { readApiResponse } from '@/lib/api-response';
 import {
+  AlertCircle,
   ArrowLeft,
-  Sparkles,
-  CheckCircle2,
-  X,
-  Clock,
-  TrendingUp,
-  Edit3,
+  Bot,
+  Calendar as CalendarIcon,
   Check,
   CheckCheck,
-  Loader2,
-  Plus,
+  CheckCircle2,
+  ChevronDown,
+  Clock,
+  Edit3,
+  ExternalLink,
+  Eye,
   FileText,
-  Wand2,
+  Hash,
   Image as ImageIcon,
+  Loader2,
+  MessageCircle,
+  MessageSquare,
+  Plus,
   RefreshCw,
   Send,
-  ExternalLink,
+  Sparkles,
   ThumbsUp,
-  MessageSquare,
-  Share2,
-  Eye,
-  Calendar as CalendarIcon,
-  ShieldCheck,
-  AlertCircle,
-  Zap,
-  Bot,
-  MessageCircle,
+  Wand2,
+  X,
 } from 'lucide-react';
+import { readApiResponse } from '@/lib/api-response';
+import { LinkedInMark } from '@/components/brand/marks';
+import { Button } from '@/components/ui/button';
+import { Modal } from '@/components/ui/modal';
+import { Tabs, TabPanel } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/field';
+import {
+  CardSkeleton,
+  EmptyState,
+  InlineNotice,
+  LiveDot,
+  MetricCard,
+  Panel,
+  StatusBadge,
+} from '@/components/ui/product';
+import { cn } from '@/lib/utils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -99,6 +111,8 @@ interface CommentsResponse {
   sync: { status: string; message?: string; partial?: boolean };
 }
 
+type TabId = 'suggestions' | 'scheduled' | 'published' | 'drafts' | 'comments';
+
 // ─── API calls ───────────────────────────────────────────────────────────────
 
 async function fetchSuggestions(): Promise<Suggestion[]> {
@@ -133,29 +147,30 @@ async function approveSuggestions(payload: {
   return (await res.json()).data;
 }
 
-// ─── Platform Meta Definitions ───────────────────────────────────────────────
+// ─── Platform meta ───────────────────────────────────────────────────────────
 
-const PLATFORM_META: Record<
-  string,
-  { name: string; handle: string; color: string; bgGradient: string; logo: React.ReactNode }
-> = {
+const PLATFORM_META: Record<string, { name: string; color: string; logo: React.ReactNode }> = {
   linkedin: {
     name: 'LinkedIn',
-    handle: '@connected-user',
     color: '#0A66C2',
-    bgGradient: 'from-blue-600 to-indigo-700',
-    logo: (
-      <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-        <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
-      </svg>
-    ),
+    logo: <LinkedInMark className="h-5 w-5" />,
   },
 };
+
+const formatDateTime = (value: string) =>
+  new Date(value).toLocaleString('en', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function PlatformPage() {
   const { provider } = useParams<{ provider: string }>();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'suggestions' | 'scheduled' | 'published' | 'drafts' | 'comments'>('suggestions');
+  const [activeTab, setActiveTab] = useState<TabId>('suggestions');
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState<Record<string, string>>({});
@@ -166,19 +181,18 @@ export default function PlatformPage() {
   const [sendingReplyId, setSendingReplyId] = useState<string | null>(null);
   const [sentReplies, setSentReplies] = useState<Set<string>>(new Set());
   const [replyError, setReplyError] = useState<string | null>(null);
+  const [publishError, setPublishError] = useState<string | null>(null);
 
   useEffect(() => {
     const requestedTab = new URLSearchParams(window.location.search).get('tab');
     if (['suggestions', 'scheduled', 'published', 'drafts', 'comments'].includes(requestedTab || '')) {
-      setActiveTab(requestedTab as typeof activeTab);
+      setActiveTab(requestedTab as TabId);
     }
   }, []);
 
   const meta = PLATFORM_META[provider] || {
     name: provider,
-    handle: `@${provider}`,
-    color: '#666',
-    bgGradient: 'from-slate-700 to-slate-900',
+    color: 'hsl(var(--muted-foreground))',
     logo: null,
   };
 
@@ -188,6 +202,7 @@ export default function PlatformPage() {
     isError: suggestionsFailed,
     error: suggestionsError,
     refetch: refetchSuggestions,
+    isFetching: suggestionsFetching,
   } = useQuery({
     queryKey: ['suggestions'],
     queryFn: fetchSuggestions,
@@ -195,7 +210,7 @@ export default function PlatformPage() {
     refetchOnMount: 'always',
   });
 
-  const { data: posts = [], isLoading: postsLoading } = useQuery({
+  const { data: posts = [] } = useQuery({
     queryKey: ['posts', provider],
     queryFn: () => fetchPosts(provider),
     staleTime: 0,
@@ -223,8 +238,6 @@ export default function PlatformPage() {
       queryClient.invalidateQueries({ queryKey: ['analytics-overview'] });
     },
   });
-
-  const [publishError, setPublishError] = useState<string | null>(null);
 
   const publishMutation = useMutation({
     mutationFn: async (postId: string) => {
@@ -327,6 +340,28 @@ export default function PlatformPage() {
     }
   };
 
+  const handleGenerateReply = async (comment: PostComment) => {
+    try {
+      const res = await fetch('/api/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          action: 'generate_reply',
+          commentText: comment.commentText,
+          postText: comment.postTitle,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || 'Reply generation failed.');
+      if (data.data?.replyText) {
+        setEditingReply((prev) => ({ ...prev, [comment.id]: data.data.replyText }));
+      }
+    } catch (error) {
+      setReplyError(error instanceof Error ? error.message : 'Reply generation failed.');
+    }
+  };
+
   const handleAiPolish = () => {
     if (!newPostContent.trim()) return;
     setIsPolishing(true);
@@ -338,812 +373,840 @@ export default function PlatformPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 pb-12">
-      {/* Top Breadcrumbs Navigation */}
-      <div className="flex items-center justify-between">
+      {/* ── Breadcrumb ───────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between gap-4">
         <Link
           href="/dashboard"
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors group"
+          className="group inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
-          <ArrowLeft className="h-3.5 w-3.5 group-hover:-translate-x-0.5 transition-transform" />
-          Back to Dashboard
+          <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5" />
+          Back to dashboard
         </Link>
-
-        <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <span className={`h-2 w-2 rounded-full ${syncIsLive ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-          {syncIsLive ? 'Live engagement synced' : 'Engagement sync needs attention'}
-        </span>
+        <LiveDot
+          live={syncIsLive}
+          label={syncIsLive ? 'Live engagement synced' : 'Engagement sync needs attention'}
+        />
       </div>
 
-      {/* Platform Header Card (shadcn/ui style with Auto-Reply Toggle) */}
-      <div className="rounded-2xl p-6 border border-border bg-card relative overflow-hidden transition-all duration-300 animate-fade-in">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
-          <div className="flex items-center gap-3.5">
-            <div
-              className="w-11 h-11 rounded-xl flex items-center justify-center text-white font-bold text-lg shrink-0"
-              style={{ backgroundColor: meta.color }}
-            >
-              {meta.logo}
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight text-foreground">{meta.name} Pipeline</h1>
-                <span className="px-2.5 py-0.5 text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 rounded-md flex items-center gap-1">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  Connected
-                </span>
-              </div>
-              <p className="text-muted-foreground text-xs mt-0.5">
-                Content planning, publishing, real engagement, and human-reviewed AI replies
-              </p>
-            </div>
+      {/* ── Platform header ──────────────────────────────────────────── */}
+      <Panel className="animate-fade-in overflow-hidden p-0">
+        <div className="relative">
+          <div className="aurora">
+            <span className="left-[-2%] top-[-70%] h-56 w-56 animate-drift bg-primary/25" />
+            <span
+              className="right-[10%] top-[-50%] h-48 w-48 animate-drift bg-accent/20"
+              style={{ animationDelay: '-9s' }}
+            />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            <div className="flex items-center gap-2.5 rounded-xl border border-border bg-muted/40 px-3 py-1.5">
-              <Bot className="h-4 w-4 shrink-0 text-primary" />
-              <div className="flex flex-col">
-                <span className="text-[10px] font-bold uppercase text-muted-foreground leading-tight">
-                  Reply mode
-                </span>
-                <span className="text-[11px] font-bold text-foreground leading-tight">Human review</span>
+          <div className="relative flex flex-col items-start justify-between gap-4 p-6 sm:flex-row sm:items-center">
+            <div className="flex min-w-0 items-center gap-4">
+              <span
+                className="grid h-12 w-12 shrink-0 place-items-center rounded-xl text-white shadow-soft"
+                style={{ backgroundColor: meta.color }}
+              >
+                {meta.logo}
+              </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-xl font-bold tracking-[-0.03em] sm:text-2xl">
+                    {meta.name} pipeline
+                  </h1>
+                  <StatusBadge tone="success" dot>
+                    Connected
+                  </StatusBadge>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Content planning, publishing, real engagement, and human-reviewed AI replies.
+                </p>
               </div>
             </div>
 
-            {visibleSuggestions.length > 0 && (
-              <button
-                onClick={handleApproveAll}
-                disabled={approve.isPending}
-                className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
-              >
-                {approve.isPending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <CheckCheck className="h-3.5 w-3.5" />
-                )}
-                Approve All ({visibleSuggestions.length})
-              </button>
-            )}
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+              <div className="flex items-center gap-2.5 rounded-xl border border-border bg-muted/40 px-3 py-1.5">
+                <Bot className="h-4 w-4 shrink-0 text-primary" />
+                <span className="flex flex-col leading-tight">
+                  <span className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                    Reply mode
+                  </span>
+                  <span className="text-[11px] font-bold">Human review</span>
+                </span>
+              </div>
 
+              {visibleSuggestions.length > 0 ? (
+                <Button
+                  variant="success"
+                  size="sm"
+                  onClick={handleApproveAll}
+                  loading={approve.isPending}
+                  icon={<CheckCheck className="h-3.5 w-3.5" />}
+                  className="flex-1 sm:flex-initial"
+                >
+                  Approve all ({visibleSuggestions.length})
+                </Button>
+              ) : null}
+
+              <Button
+                size="sm"
+                onClick={() => setShowNewPostModal(true)}
+                icon={<Plus className="h-3.5 w-3.5" />}
+                className="flex-1 sm:flex-initial"
+              >
+                New post
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Panel>
+
+      {publishError ? (
+        <InlineNotice
+          title="Publishing failed"
+          tone="danger"
+          icon={<AlertCircle className="h-4 w-4" />}
+          action={
             <button
-              onClick={() => setShowNewPostModal(true)}
-              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-foreground text-background hover:opacity-90 rounded-xl text-xs font-semibold transition-all"
+              type="button"
+              onClick={() => setPublishError(null)}
+              aria-label="Dismiss"
+              className="grid h-7 w-7 place-items-center rounded-lg text-destructive transition-colors hover:bg-destructive/15"
             >
-              <Plus className="h-3.5 w-3.5" />
-              New Post
+              <X className="h-4 w-4" />
+            </button>
+          }
+        >
+          {publishError}
+        </InlineNotice>
+      ) : null}
+
+      {/* ── Metrics ──────────────────────────────────────────────────── */}
+      <div className="stagger grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <MetricCard
+          label="AI suggestions"
+          value={visibleSuggestions.length}
+          accent="primary"
+          icon={<Sparkles className="h-4 w-4" />}
+          hint="Awaiting your review"
+        />
+        <MetricCard
+          label="Scheduled"
+          value={scheduledPosts.length}
+          accent="warning"
+          icon={<Clock className="h-4 w-4" />}
+          hint="In the publishing queue"
+        />
+        <MetricCard
+          label="Published"
+          value={publishedPosts.length}
+          accent="success"
+          icon={<CheckCircle2 className="h-4 w-4" />}
+          hint={`Live on ${meta.name}`}
+        />
+        <MetricCard
+          label="Reply assistant"
+          value={<span className="text-lg text-success">Manual</span>}
+          accent="info"
+          icon={<Bot className="h-4 w-4" />}
+          hint="Nothing posts without approval"
+        />
+      </div>
+
+      {/* ── Tabs ─────────────────────────────────────────────────────── */}
+      <Tabs<TabId>
+        value={activeTab}
+        onChange={setActiveTab}
+        items={[
+          { id: 'suggestions', label: 'AI suggestions', count: visibleSuggestions.length, icon: Sparkles },
+          { id: 'scheduled', label: 'Scheduled', count: scheduledPosts.length, icon: Clock },
+          { id: 'published', label: 'Published', count: publishedPosts.length, icon: CheckCircle2 },
+          { id: 'drafts', label: 'Drafts', count: draftPosts.length, icon: FileText },
+          { id: 'comments', label: 'Comments', count: commentsList.length, icon: MessageCircle },
+        ]}
+      />
+
+      {/* ── Tab: suggestions ─────────────────────────────────────────── */}
+      {activeTab === 'suggestions' ? (
+        <TabPanel className="space-y-3">
+          {suggestionsLoading ? (
+            <CardSkeleton count={3} />
+          ) : suggestionsFailed ? (
+            <EmptyState
+              icon={<AlertCircle className="h-6 w-6" />}
+              title="AI suggestions unavailable"
+              description={
+                suggestionsError instanceof Error
+                  ? suggestionsError.message
+                  : 'AI suggestions could not be generated. Please try again.'
+              }
+              action={
+                <Button
+                  onClick={() => refetchSuggestions()}
+                  loading={suggestionsFetching}
+                  icon={<RefreshCw className="h-3.5 w-3.5" />}
+                >
+                  Try again
+                </Button>
+              }
+            />
+          ) : visibleSuggestions.length === 0 ? (
+            <EmptyState
+              icon={<Sparkles className="h-6 w-6" />}
+              title="No pending suggestions"
+              description="Your AI agent is monitoring developer feeds. Refresh to pull fresh recommendations, or start from a blank draft."
+              action={
+                <>
+                  <Button
+                    onClick={() => refetchSuggestions()}
+                    loading={suggestionsFetching}
+                    icon={<RefreshCw className="h-3.5 w-3.5" />}
+                  >
+                    Generate suggestions
+                  </Button>
+                  <Button variant="secondary" onClick={() => setShowNewPostModal(true)}>
+                    Draft custom post
+                  </Button>
+                </>
+              }
+            />
+          ) : (
+            <div className="stagger space-y-3">
+              {visibleSuggestions.map((suggestion) => (
+                <SuggestionCard
+                  key={suggestion.id}
+                  suggestion={suggestion}
+                  expanded={expanded === suggestion.id}
+                  content={editingContent[suggestion.id] ?? suggestion.content}
+                  pending={approve.isPending}
+                  onToggle={() =>
+                    setExpanded(expanded === suggestion.id ? null : suggestion.id)
+                  }
+                  onContentChange={(value) =>
+                    setEditingContent((prev) => ({ ...prev, [suggestion.id]: value }))
+                  }
+                  onApprove={() => handleApproveOne(suggestion)}
+                  onDismiss={() => handleDismiss(suggestion.id)}
+                  onCollapse={() => setExpanded(null)}
+                />
+              ))}
+            </div>
+          )}
+        </TabPanel>
+      ) : null}
+
+      {/* ── Tab: scheduled ───────────────────────────────────────────── */}
+      {activeTab === 'scheduled' ? (
+        <TabPanel className="space-y-3">
+          {scheduledPosts.length === 0 ? (
+            <EmptyState
+              icon={<Clock className="h-6 w-6" />}
+              title="No scheduled posts"
+              description="Approve suggestions from the AI suggestions tab, or create a new post to add it to your queue."
+              action={
+                <Button onClick={() => setActiveTab('suggestions')} icon={<Sparkles className="h-3.5 w-3.5" />}>
+                  Review suggestions
+                </Button>
+              }
+            />
+          ) : (
+            <div className="stagger space-y-3">
+              {scheduledPosts.map((post) => (
+                <Panel key={post.id} className="space-y-4 p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge tone="warning">
+                        <Clock className="h-3 w-3" /> Queued
+                      </StatusBadge>
+                      {post.aiGenerated ? (
+                        <StatusBadge tone="primary">
+                          <Sparkles className="h-3 w-3" /> AI
+                        </StatusBadge>
+                      ) : null}
+                    </div>
+                    <span className="flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
+                      <CalendarIcon className="h-3.5 w-3.5" />
+                      {post.scheduledAt ? formatDateTime(post.scheduledAt) : 'Queued'}
+                    </span>
+                  </div>
+
+                  <PostBody content={post.content} />
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3">
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      {post.content.length} characters
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Button variant="secondary" size="sm" icon={<CalendarIcon className="h-3.5 w-3.5" />}>
+                        Edit schedule
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => publishMutation.mutate(post.id)}
+                        loading={publishMutation.isPending && publishMutation.variables === post.id}
+                        icon={<Send className="h-3.5 w-3.5" />}
+                      >
+                        Publish now
+                      </Button>
+                    </div>
+                  </div>
+                </Panel>
+              ))}
+            </div>
+          )}
+        </TabPanel>
+      ) : null}
+
+      {/* ── Tab: published ───────────────────────────────────────────── */}
+      {activeTab === 'published' ? (
+        <TabPanel className="space-y-3">
+          {publishedPosts.length === 0 ? (
+            <EmptyState
+              icon={<CheckCircle2 className="h-6 w-6" />}
+              title="No published posts yet"
+              description={`Approved scheduled posts appear here with live engagement metrics once published to ${meta.name}.`}
+            />
+          ) : (
+            <div className="stagger space-y-3">
+              {publishedPosts.map((post) => {
+                const postUrl =
+                  post.platformPostUrl ||
+                  post.metadata?.linkedInUrl ||
+                  (post.metadata?.linkedInPostId
+                    ? `https://www.linkedin.com/feed/update/${post.metadata.linkedInPostId}`
+                    : null);
+                const hasReadableMetrics =
+                  post.engagementSync?.status === 'ok' || post.engagementSync?.cached === true;
+                const likes =
+                  hasReadableMetrics && typeof post.metadata?.likes === 'number'
+                    ? post.metadata.likes
+                    : '—';
+                const commentCount =
+                  hasReadableMetrics && typeof post.metadata?.comments === 'number'
+                    ? post.metadata.comments
+                    : '—';
+
+                return (
+                  <Panel key={post.id} className="space-y-4 p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <StatusBadge tone="success" dot>
+                        Published live
+                      </StatusBadge>
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        {post.publishedAt ? new Date(post.publishedAt).toLocaleDateString() : 'Just now'}
+                      </span>
+                    </div>
+
+                    <PostBody content={post.content} />
+
+                    {post.engagementSync && post.engagementSync.status !== 'ok' ? (
+                      <InlineNotice
+                        title={
+                          post.engagementSync.cached
+                            ? 'Showing last synced engagement'
+                            : 'Live engagement unavailable'
+                        }
+                        tone="warning"
+                        icon={<AlertCircle className="h-4 w-4" />}
+                      >
+                        {post.engagementSync.message ||
+                          'Reconnect LinkedIn or enable engagement read access to sync this post.'}
+                      </InlineNotice>
+                    ) : null}
+
+                    <div className="grid grid-cols-2 items-center gap-3 border-t border-border/70 pt-3 sm:grid-cols-4">
+                      <EngagementStat icon={<Eye className="h-3.5 w-3.5" />} value="—" label="Views" />
+                      <EngagementStat
+                        icon={<ThumbsUp className="h-3.5 w-3.5 text-success" />}
+                        value={likes}
+                        label="Reactions"
+                      />
+                      <EngagementStat
+                        icon={<MessageSquare className="h-3.5 w-3.5 text-warning" />}
+                        value={commentCount}
+                        label="Comments"
+                      />
+                      <div className="flex justify-start sm:justify-end">
+                        {postUrl ? (
+                          <a
+                            href={postUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-foreground underline decoration-border underline-offset-4 transition-colors hover:decoration-primary"
+                          >
+                            Open post <ExternalLink className="h-3 w-3" />
+                          </a>
+                        ) : (
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            Link unavailable
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </Panel>
+                );
+              })}
+            </div>
+          )}
+        </TabPanel>
+      ) : null}
+
+      {/* ── Tab: drafts ──────────────────────────────────────────────── */}
+      {activeTab === 'drafts' ? (
+        <TabPanel className="space-y-3">
+          {draftPosts.length === 0 ? (
+            <EmptyState
+              icon={<FileText className="h-6 w-6" />}
+              title="No saved drafts"
+              description="Use “New post” to draft, refine, and polish an idea before it reaches the queue."
+              action={
+                <Button onClick={() => setShowNewPostModal(true)} icon={<Plus className="h-3.5 w-3.5" />}>
+                  Create first draft
+                </Button>
+              }
+            />
+          ) : (
+            <div className="stagger space-y-3">
+              {draftPosts.map((post) => (
+                <Panel key={post.id} className="space-y-4 p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <StatusBadge tone="neutral">Draft</StatusBadge>
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      {new Date(post.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+
+                  <PostBody content={post.content} />
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3">
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      {post.content.length} characters
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => convertDraftMutation.mutate(post.id)}
+                        loading={
+                          convertDraftMutation.isPending && convertDraftMutation.variables === post.id
+                        }
+                        icon={<Clock className="h-3.5 w-3.5" />}
+                      >
+                        Convert to schedule
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => publishMutation.mutate(post.id)}
+                        loading={publishMutation.isPending && publishMutation.variables === post.id}
+                        icon={<Send className="h-3.5 w-3.5" />}
+                      >
+                        Publish now
+                      </Button>
+                    </div>
+                  </div>
+                </Panel>
+              ))}
+            </div>
+          )}
+        </TabPanel>
+      ) : null}
+
+      {/* ── Tab: comments ────────────────────────────────────────────── */}
+      {activeTab === 'comments' ? (
+        <TabPanel className="space-y-3">
+          {commentsData?.sync.status && commentsData.sync.status !== 'ok' ? (
+            <InlineNotice
+              title={
+                commentsData.sync.partial
+                  ? 'Some comments could not sync'
+                  : 'Real comments are unavailable'
+              }
+              tone="warning"
+              icon={<AlertCircle className="h-4 w-4" />}
+            >
+              {commentsData.sync.message ||
+                'Reconnect LinkedIn or enable engagement read access, then try again.'}
+            </InlineNotice>
+          ) : null}
+
+          {replyError ? (
+            <InlineNotice
+              title="Reply was not published"
+              tone="danger"
+              icon={<AlertCircle className="h-4 w-4" />}
+            >
+              {replyError}
+            </InlineNotice>
+          ) : null}
+
+          {commentsList.length === 0 ? (
+            <EmptyState
+              icon={<MessageCircle className="h-6 w-6" />}
+              title="No comments yet"
+              description="Real comments on your published posts appear here. AI replies are only generated when you ask for one, and only sent after you approve the wording."
+            />
+          ) : (
+            <div className="stagger space-y-3">
+              {commentsList.map((comment) => (
+                <CommentCard
+                  key={comment.id}
+                  comment={comment}
+                  sent={sentReplies.has(comment.id) || comment.status === 'sent'}
+                  replyText={editingReply[comment.id] ?? comment.aiReplyText}
+                  sending={sendingReplyId === comment.id}
+                  onReplyChange={(value) =>
+                    setEditingReply((prev) => ({ ...prev, [comment.id]: value }))
+                  }
+                  onGenerate={() => handleGenerateReply(comment)}
+                  onSend={(text) => handleSendCommentReply(comment, text)}
+                />
+              ))}
+            </div>
+          )}
+        </TabPanel>
+      ) : null}
+
+      {/* ── New post modal ───────────────────────────────────────────── */}
+      <Modal
+        open={showNewPostModal}
+        onClose={() => setShowNewPostModal(false)}
+        title={`Draft new ${meta.name} post`}
+        description="Write it here, polish it, then send it to the queue."
+        icon={<Plus className="h-4 w-4" />}
+        footer={
+          <>
+            <Button variant="ghost" size="sm" onClick={() => setShowNewPostModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!newPostContent.trim()}
+              onClick={() => {
+                setShowNewPostModal(false);
+                setNewPostContent('');
+              }}
+              icon={<CalendarIcon className="h-3.5 w-3.5" />}
+            >
+              Schedule post
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Textarea
+            value={newPostContent}
+            onChange={(event) => setNewPostContent(event.target.value)}
+            placeholder="What software engineering insight do you want to share?"
+            rows={8}
+            className="min-h-40 text-[13px]"
+          />
+          <div className="flex items-center justify-between gap-3">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleAiPolish}
+              disabled={isPolishing || !newPostContent.trim()}
+              icon={<Wand2 className={cn('h-3.5 w-3.5 text-primary', isPolishing && 'animate-spin')} />}
+            >
+              AI polish
+            </Button>
+            <span className="font-mono text-[10px] text-muted-foreground">
+              {newPostContent.length} / 3000
+            </span>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+// ─── Pieces ──────────────────────────────────────────────────────────────────
+
+function PostBody({ content }: { content: string }) {
+  return (
+    <p className="whitespace-pre-wrap rounded-xl border border-border/60 bg-muted/25 p-4 text-[13px] leading-6 text-foreground">
+      {content}
+    </p>
+  );
+}
+
+function EngagementStat({
+  icon,
+  value,
+  label,
+}: {
+  icon: React.ReactNode;
+  value: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-muted-foreground">
+      {icon}
+      <span className="text-sm font-bold tabular-nums text-foreground">{value}</span>
+      <span className="text-[10px]">{label}</span>
+    </div>
+  );
+}
+
+function SuggestionCard({
+  suggestion,
+  expanded,
+  content,
+  pending,
+  onToggle,
+  onContentChange,
+  onApprove,
+  onDismiss,
+  onCollapse,
+}: {
+  suggestion: Suggestion;
+  expanded: boolean;
+  content: string;
+  pending: boolean;
+  onToggle: () => void;
+  onContentChange: (value: string) => void;
+  onApprove: () => void;
+  onDismiss: () => void;
+  onCollapse: () => void;
+}) {
+  return (
+    <Panel className={cn('overflow-hidden transition-all duration-300', expanded && 'border-primary/30')}>
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onToggle}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onToggle();
+          }
+        }}
+        className="flex cursor-pointer select-none items-start justify-between gap-3 p-4 transition-colors hover:bg-muted/25"
+      >
+        <div className="min-w-0 flex-1">
+          <div className="mb-1.5 flex flex-wrap items-center gap-2">
+            <ChevronDown
+              className={cn(
+                'h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-300',
+                expanded && 'rotate-180 text-primary',
+              )}
+            />
+            <span className="truncate text-[13px] font-bold">{suggestion.trend}</span>
+            <StatusBadge tone="primary">{suggestion.category}</StatusBadge>
+            <span className="font-mono text-[10px] text-muted-foreground">via {suggestion.source}</span>
+          </div>
+
+          {!expanded ? (
+            <p className="ml-6 line-clamp-2 text-xs leading-6 text-muted-foreground">{content}</p>
+          ) : null}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="hidden items-center gap-1.5 rounded-lg border border-border/70 bg-muted/40 px-2.5 py-1 font-mono text-[10px] text-muted-foreground sm:flex">
+            <Clock className="h-3 w-3" />
+            {formatDateTime(suggestion.scheduledAt)}
+          </span>
+
+          <div className="flex items-center gap-1.5" onClick={(event) => event.stopPropagation()}>
+            <Button
+              variant="success"
+              size="xs"
+              onClick={onApprove}
+              disabled={pending}
+              icon={<Check className="h-3.5 w-3.5" />}
+              title="Approve and schedule"
+            >
+              Approve
+            </Button>
+            <button
+              type="button"
+              onClick={onDismiss}
+              title="Dismiss suggestion"
+              aria-label="Dismiss suggestion"
+              className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
             </button>
           </div>
         </div>
       </div>
 
-      {publishError && (
-        <div className="p-4 rounded-xl border border-destructive/30 bg-destructive/10 text-destructive text-xs font-semibold flex items-center justify-between animate-fade-in">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
-            <span>{publishError}</span>
-          </div>
-          <button
-            onClick={() => setPublishError(null)}
-            className="p-1 hover:bg-destructive/20 rounded-md text-destructive transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
-      {/* 4 Metric Cards Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-        <div className="glass-card rounded-xl p-4 border border-border bg-card hover:border-blue-500/30 transition-all">
-          <div className="flex items-center justify-between text-muted-foreground mb-1">
-            <span className="text-[11px] font-medium">AI Suggestions</span>
-            <Sparkles className="h-3.5 w-3.5 text-blue-500" />
-          </div>
-          <span className="text-xl font-bold text-foreground block">{visibleSuggestions.length} Ready</span>
-          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium mt-1 block">⚡ Fresh Suggestions</span>
-        </div>
-
-        <div className="glass-card rounded-xl p-4 border border-border bg-card hover:border-blue-500/30 transition-all">
-          <div className="flex items-center justify-between text-muted-foreground mb-1">
-            <span className="text-[11px] font-medium">Scheduled Posts</span>
-            <Clock className="h-3.5 w-3.5 text-amber-500" />
-          </div>
-          <span className="text-xl font-bold text-foreground block">{scheduledPosts.length} Queued</span>
-          <span className="text-[10px] text-muted-foreground font-medium mt-1 block">Publishing queue</span>
-        </div>
-
-        <div className="glass-card rounded-xl p-4 border border-border bg-card hover:border-blue-500/30 transition-all">
-          <div className="flex items-center justify-between text-muted-foreground mb-1">
-            <span className="text-[11px] font-medium">Published</span>
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-          </div>
-          <span className="text-xl font-bold text-foreground block">{publishedPosts.length} Total</span>
-          <span className="text-[10px] text-muted-foreground font-medium mt-1 block">Live on LinkedIn</span>
-        </div>
-
-        <div className="glass-card rounded-xl p-4 border border-border bg-card hover:border-blue-500/30 transition-all">
-          <div className="flex items-center justify-between text-muted-foreground mb-1">
-            <span className="text-[11px] font-medium">Reply assistant</span>
-            <Bot className="h-3.5 w-3.5 text-primary" />
-          </div>
-          <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            Manual review mode
-          </span>
-          <span className="text-[10px] text-muted-foreground font-medium mt-1 block">Nothing posts without approval</span>
-        </div>
-      </div>
-
-      {/* Segmented Navigation Tabs */}
-      <div className="border-b border-border">
-        <nav className="scrollbar-none flex space-x-6 overflow-x-auto" aria-label="Tabs">
-          {[
-            { id: 'suggestions', label: 'AI Suggestions', count: visibleSuggestions.length, icon: Sparkles },
-            { id: 'scheduled', label: 'Scheduled Queue', count: scheduledPosts.length, icon: Clock },
-            { id: 'published', label: 'Published', count: publishedPosts.length, icon: CheckCircle2 },
-            { id: 'drafts', label: 'Drafts', count: draftPosts.length, icon: FileText },
-            { id: 'comments', label: 'Comments & Replies', count: commentsList.length, icon: MessageCircle },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                className={`flex items-center gap-2 py-3 px-1 text-xs font-semibold border-b-2 transition-all whitespace-nowrap ${
-                  isActive
-                    ? 'border-primary text-foreground font-bold'
-                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
-                }`}
-              >
-                <Icon className={`h-4 w-4 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} />
-                <span>{tab.label}</span>
-                <span
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                    isActive
-                      ? 'bg-primary/10 text-primary'
-                      : 'bg-muted text-muted-foreground'
-                  }`}
-                >
-                  {tab.count}
-                </span>
-              </button>
-            );
-          })}
-        </nav>
-      </div>
-
-      {/* ── TAB 1: AI SUGGESTIONS ─────────────────────────────────────── */}
-      {activeTab === 'suggestions' && (
-        <div className="space-y-4">
-          {suggestionsLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-28 bg-card border rounded-2xl animate-pulse" />
-              ))}
-            </div>
-          ) : suggestionsFailed ? (
-            <div className="glass-card rounded-2xl p-12 text-center flex flex-col items-center border border-red-500/25 bg-card">
-              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-3 text-red-600 dark:text-red-400">
-                <AlertCircle className="h-6 w-6" />
-              </div>
-              <h3 className="font-bold text-sm text-foreground">AI Suggestions Unavailable</h3>
-              <p className="text-xs text-muted-foreground max-w-sm mt-1 mb-4">
-                {suggestionsError instanceof Error
-                  ? suggestionsError.message
-                  : 'AI suggestions could not be generated. Please try again.'}
-              </p>
-              <button
-                onClick={() => refetchSuggestions()}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                Try Again
-              </button>
-            </div>
-          ) : visibleSuggestions.length === 0 ? (
-            <div className="glass-card rounded-2xl p-12 text-center flex flex-col items-center border border-border bg-card">
-              <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center mb-3 text-blue-600 dark:text-blue-400">
-                <Sparkles className="h-6 w-6" />
-              </div>
-              <h3 className="font-bold text-sm text-foreground">No Pending Suggestions</h3>
-              <p className="text-xs text-muted-foreground max-w-sm mt-1 mb-4">
-                Your AI agent is monitoring developer feeds. Click below to refresh recommendations now.
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => refetchSuggestions()}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  Generate AI Suggestions
-                </button>
-                <button
-                  onClick={() => setShowNewPostModal(true)}
-                  className="px-4 py-2 bg-muted text-foreground rounded-xl text-xs font-semibold hover:bg-accent transition-colors"
-                >
-                  Draft Custom Post
-                </button>
-              </div>
-            </div>
-          ) : (
-            visibleSuggestions.map((s) => {
-              const isExpanded = expanded === s.id;
-              const currentContent = editingContent[s.id] ?? s.content;
-
-              return (
-                <div
-                  key={s.id}
-                  className="glass-card rounded-2xl border border-border bg-card overflow-hidden transition-all duration-200 hover:border-blue-500/30"
-                >
-                  <div
-                    className="p-4 flex items-start justify-between gap-3 cursor-pointer select-none hover:bg-muted/20 transition-colors"
-                    onClick={() => setExpanded(isExpanded ? null : s.id)}
-                  >
-                    <div className="flex items-start gap-3 flex-1 min-w-0">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className="text-xs font-bold text-foreground truncate">{s.trend}</span>
-                          <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-md border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                            {s.category}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground font-normal">via {s.source}</span>
-                        </div>
-
-                        {!isExpanded && (
-                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
-                            {currentContent}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div className="hidden sm:flex items-center gap-1 text-[11px] text-muted-foreground font-normal bg-muted/40 px-2.5 py-1 rounded-lg border border-border/50">
-                        <Clock className="h-3 w-3" />
-                        {new Date(s.scheduledAt).toLocaleDateString('en', {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </div>
-
-                      <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => handleApproveOne(s)}
-                          disabled={approve.isPending}
-                          className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
-                          title="Approve and Schedule Post"
-                        >
-                          <Check className="h-3.5 w-3.5" />
-                          <span>Approve</span>
-                        </button>
-                        <button
-                          onClick={() => handleDismiss(s.id)}
-                          className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors"
-                          title="Dismiss Suggestion"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {isExpanded && (
-                    <div className="p-4 border-t border-border bg-muted/10 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                          <Edit3 className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-                          Edit Post Content
-                        </label>
-                        <span className="text-[11px] text-muted-foreground font-medium">
-                          {currentContent.length} / 3000 chars
-                        </span>
-                      </div>
-
-                      <textarea
-                        value={currentContent}
-                        onChange={(e) =>
-                          setEditingContent((prev) => ({ ...prev, [s.id]: e.target.value }))
-                        }
-                        rows={6}
-                        className="w-full p-3.5 text-xs rounded-xl bg-background border border-border focus:outline-none focus:ring-1 focus:ring-blue-500/40 leading-relaxed font-sans min-h-[140px] resize-y"
-                      />
-
-                      {s.imageUrl && (
-                        <div className="relative rounded-xl overflow-hidden border border-border bg-slate-950 group">
-                          <img
-                            src={s.imageUrl}
-                            alt={s.trend}
-                            className="w-full h-52 object-cover group-hover:scale-102 transition-transform duration-300"
-                          />
-                          <div className="absolute bottom-2.5 left-2.5 bg-background/90 backdrop-blur-md px-3 py-1 rounded-lg text-[10px] text-foreground font-semibold flex items-center gap-1.5 border border-border">
-                            <ImageIcon className="h-3.5 w-3.5 text-blue-500" />
-                            <span>Topic Visual Asset Attached</span>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-between pt-1">
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setEditingContent((prev) => ({
-                                ...prev,
-                                [s.id]: `${currentContent.trim()}\n\n#SoftwareEngineering #Backend #Coding`,
-                              }))
-                            }
-                            className="px-2.5 py-1 bg-muted hover:bg-accent text-foreground rounded-lg text-[11px] font-medium transition-colors"
-                          >
-                            + Add Hashtags
-                          </button>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setExpanded(null)}
-                            className="px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
-                          >
-                            Collapse
-                          </button>
-                          <button
-                            onClick={() => handleApproveOne(s)}
-                            disabled={approve.isPending}
-                            className="flex items-center gap-1 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
-                          >
-                            {approve.isPending ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Check className="h-3.5 w-3.5" />
-                            )}
-                            Approve & Schedule
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-      )}
-
-      {/* ── TAB 2: SCHEDULED POSTS ─────────────────────────────────────── */}
-      {activeTab === 'scheduled' && (
-        <div className="space-y-3">
-          {scheduledPosts.length === 0 ? (
-            <div className="glass-card rounded-2xl p-12 text-center border border-border bg-card">
-              <Clock className="h-8 w-8 text-amber-500/60 mx-auto mb-2" />
-              <h3 className="font-bold text-sm text-foreground">No Scheduled Posts</h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                Approve suggestions from the AI Suggestions tab or create a new post to add to your queue.
-              </p>
-            </div>
-          ) : (
-            scheduledPosts.map((post) => (
-              <div key={post.id} className="glass-card rounded-2xl p-5 border border-border bg-card space-y-3">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2.5 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold rounded-md border border-amber-500/20 flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      Scheduled Queue
-                    </span>
-                    {post.aiGenerated && (
-                      <span className="px-2 py-0.5 bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[10px] font-medium rounded-md">
-                        AI Generated
-                      </span>
-                    )}
-                  </div>
-
-                  <span className="text-muted-foreground font-medium text-xs flex items-center gap-1.5">
-                    <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                    {post.scheduledAt
-                      ? new Date(post.scheduledAt).toLocaleString('en', {
-                          month: 'short',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })
-                      : 'Queued'}
-                  </span>
-                </div>
-
-                <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap font-sans bg-muted/20 p-3.5 rounded-xl border border-border/40">
-                  {post.content}
-                </p>
-
-                <div className="flex items-center justify-between pt-1 text-xs">
-                  <span className="text-[11px] text-muted-foreground">{post.content.length} characters</span>
-                  <div className="flex items-center gap-2">
-                    <button className="px-3 py-1.5 bg-muted hover:bg-accent text-foreground rounded-lg font-medium text-xs transition-colors">
-                      Edit Schedule
-                    </button>
-                    <button
-                      onClick={() => publishMutation.mutate(post.id)}
-                      disabled={publishMutation.isPending}
-                      className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-semibold text-xs transition-colors flex items-center gap-1.5 disabled:opacity-50"
-                    >
-                      {publishMutation.isPending && publishMutation.variables === post.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Send className="h-3.5 w-3.5" />
-                      )}
-                      <span>Publish Now</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      {/* ── TAB 3: PUBLISHED POSTS ─────────────────────────────────────── */}
-      {activeTab === 'published' && (
-        <div className="space-y-3">
-          {publishedPosts.length === 0 ? (
-            <div className="glass-card rounded-2xl p-12 text-center border border-border bg-card">
-              <CheckCircle2 className="h-8 w-8 text-emerald-500/60 mx-auto mb-2" />
-              <h3 className="font-bold text-sm text-foreground">No Published Posts Yet</h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                Approved scheduled posts will appear here with live engagement metrics once published to {meta.name}.
-              </p>
-            </div>
-          ) : (
-            publishedPosts.map((post) => {
-              const postUrl = post.platformPostUrl || post.metadata?.linkedInUrl ||
-                (post.metadata?.linkedInPostId ? `https://www.linkedin.com/feed/update/${post.metadata.linkedInPostId}` : null);
-              const hasReadableMetrics =
-                post.engagementSync?.status === 'ok' || post.engagementSync?.cached === true;
-              const likes = hasReadableMetrics && typeof post.metadata?.likes === 'number' ? post.metadata.likes : '—';
-              const commentCount =
-                hasReadableMetrics && typeof post.metadata?.comments === 'number' ? post.metadata.comments : '—';
-
-              return (
-                <div key={post.id} className="glass-card rounded-2xl p-5 border border-border bg-card space-y-3">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="px-2.5 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-semibold rounded-md border border-emerald-500/20 flex items-center gap-1">
-                      <CheckCircle2 className="h-3 w-3" />
-                      Published Live
-                    </span>
-                    <span className="text-muted-foreground font-medium">
-                      {post.publishedAt ? new Date(post.publishedAt).toLocaleDateString() : 'Just now'}
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap bg-muted/20 p-3.5 rounded-xl border border-border/40">
-                    {post.content}
-                  </p>
-
-                  {post.engagementSync && post.engagementSync.status !== 'ok' ? (
-                    <InlineNotice
-                      title={post.engagementSync.cached ? 'Showing last synced engagement' : 'Live engagement unavailable'}
-                      tone="warning"
-                      icon={<AlertCircle className="h-4 w-4" />}
-                    >
-                      {post.engagementSync.message || 'Reconnect LinkedIn or enable engagement read access to sync this post.'}
-                    </InlineNotice>
-                  ) : null}
-
-                  <div className="grid grid-cols-2 gap-3 border-t border-border pt-3 text-xs sm:grid-cols-4">
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <Eye className="h-3.5 w-3.5" />
-                      <span className="font-semibold text-foreground">—</span>
-                      <span className="text-[10px]">Views</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <ThumbsUp className="h-3.5 w-3.5 text-emerald-500" />
-                      <span className="font-semibold text-foreground">{likes}</span>
-                      <span className="text-[10px]">Reactions</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <MessageSquare className="h-3.5 w-3.5 text-amber-500" />
-                      <span className="font-semibold text-foreground">{commentCount}</span>
-                      <span className="text-[10px]">Comments</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-muted-foreground justify-end">
-                      {postUrl ? (
-                        <a
-                          href={postUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-[11px] font-semibold text-foreground underline decoration-border underline-offset-4 hover:decoration-primary"
-                        >
-                          <span>Open post</span>
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
-                      ) : (
-                        <span className="text-[10px]">Link unavailable</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      )}
-
-      {/* ── TAB 4: DRAFTS ──────────────────────────────────────────────── */}
-      {activeTab === 'drafts' && (
-        <div className="space-y-3">
-          {draftPosts.length === 0 ? (
-            <div className="glass-card rounded-2xl p-12 text-center border border-border bg-card">
-              <FileText className="h-8 w-8 text-blue-500/60 mx-auto mb-2" />
-              <h3 className="font-bold text-sm text-foreground">No Saved Drafts</h3>
-              <p className="text-xs text-muted-foreground mt-1 mb-4">
-                Use the "New Post" button to draft, refine, and polish post ideas.
-              </p>
-              <button
-                onClick={() => setShowNewPostModal(true)}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold transition-colors"
-              >
-                Create First Draft
-              </button>
-            </div>
-          ) : (
-            draftPosts.map((post) => (
-              <div key={post.id} className="glass-card rounded-2xl p-5 border border-border bg-card space-y-3">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="px-2 py-0.5 bg-muted text-muted-foreground font-semibold rounded-md border border-border">
-                    Draft
-                  </span>
-                  <span className="text-muted-foreground font-medium">
-                    {new Date(post.createdAt).toLocaleDateString()}
-                  </span>
-                </div>
-
-                <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap bg-muted/20 p-3.5 rounded-xl border border-border/40">
-                  {post.content}
-                </p>
-
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-[11px] text-muted-foreground">{post.content.length} chars</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => convertDraftMutation.mutate(post.id)}
-                      disabled={convertDraftMutation.isPending}
-                      className="px-3 py-1.5 bg-muted hover:bg-accent text-foreground rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 disabled:opacity-50"
-                    >
-                      {convertDraftMutation.isPending && convertDraftMutation.variables === post.id ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <Clock className="h-3 w-3" />
-                      )}
-                      Convert to Schedule
-                    </button>
-                    <button
-                      onClick={() => publishMutation.mutate(post.id)}
-                      disabled={publishMutation.isPending}
-                      className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-50"
-                    >
-                      {publishMutation.isPending && publishMutation.variables === post.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Send className="h-3.5 w-3.5" />
-                      )}
-                      Publish Now
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      {/* ── TAB 5: COMMENTS & AUTO-REPLIES ───────────────────────────── */}
-      {activeTab === 'comments' && (
-        <div className="space-y-4">
-          {commentsData?.sync.status && commentsData.sync.status !== 'ok' ? (
-            <InlineNotice
-              title={commentsData.sync.partial ? 'Some comments could not sync' : 'Real comments are unavailable'}
-              tone="warning"
-              icon={<AlertCircle className="h-4 w-4" />}
+      {expanded ? (
+        <div className="animate-fade-in space-y-3 border-t border-border/70 bg-muted/15 p-4">
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-1.5 text-xs font-bold">
+              <Edit3 className="h-3.5 w-3.5 text-primary" />
+              Edit post content
+            </label>
+            <span
+              className={cn(
+                'font-mono text-[10px]',
+                content.length > 3000 ? 'text-destructive' : 'text-muted-foreground',
+              )}
             >
-              {commentsData.sync.message || 'Reconnect LinkedIn or enable engagement read access, then try again.'}
-            </InlineNotice>
-          ) : null}
-          {replyError ? (
-            <InlineNotice title="Reply was not published" tone="danger" icon={<AlertCircle className="h-4 w-4" />}>
-              {replyError}
-            </InlineNotice>
-          ) : null}
-          {commentsList.length === 0 ? (
-            <div className="glass-card rounded-2xl p-12 text-center border border-border bg-card">
-              <MessageCircle className="h-8 w-8 text-blue-500/60 mx-auto mb-2" />
-              <h3 className="font-bold text-sm text-foreground">No Comments Yet</h3>
-              <p className="text-xs text-muted-foreground mt-1">
-                Real comments on your published LinkedIn posts will appear here. AI replies are generated only when you ask.
-              </p>
+              {content.length} / 3000
+            </span>
+          </div>
+
+          <Textarea
+            value={content}
+            onChange={(event) => onContentChange(event.target.value)}
+            rows={7}
+            className="min-h-36 text-[13px]"
+          />
+
+          {suggestion.imageUrl ? (
+            <div className="group relative overflow-hidden rounded-xl border border-border">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={suggestion.imageUrl}
+                alt={suggestion.trend}
+                className="h-52 w-full object-cover transition-transform duration-500 group-hover:scale-105"
+              />
+              <span className="glass absolute bottom-2.5 left-2.5 flex items-center gap-1.5 rounded-lg px-3 py-1 text-[10px] font-semibold">
+                <ImageIcon className="h-3.5 w-3.5 text-primary" />
+                Topic visual attached
+              </span>
             </div>
+          ) : null}
+
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <Button
+              variant="secondary"
+              size="xs"
+              onClick={() => onContentChange(`${content.trim()}\n\n#SoftwareEngineering #Backend #Coding`)}
+              icon={<Hash className="h-3 w-3" />}
+            >
+              Add hashtags
+            </Button>
+
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={onCollapse}>
+                Collapse
+              </Button>
+              <Button
+                variant="success"
+                size="sm"
+                onClick={onApprove}
+                loading={pending}
+                icon={<Check className="h-3.5 w-3.5" />}
+              >
+                Approve & schedule
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </Panel>
+  );
+}
+
+function CommentCard({
+  comment,
+  sent,
+  replyText,
+  sending,
+  onReplyChange,
+  onGenerate,
+  onSend,
+}: {
+  comment: PostComment;
+  sent: boolean;
+  replyText: string;
+  sending: boolean;
+  onReplyChange: (value: string) => void;
+  onGenerate: () => void;
+  onSend: (text: string) => void;
+}) {
+  return (
+    <Panel className="space-y-4 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/70 pb-3">
+        <span className="chip max-w-xl truncate border-primary/25 bg-primary/10 text-primary">
+          On post: “{comment.postTitle}”
+        </span>
+        <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+          {comment.createdAt
+            ? new Date(comment.createdAt).toLocaleString([], {
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              })
+            : 'Time unavailable'}
+        </span>
+      </div>
+
+      <div className="flex items-start gap-3 rounded-xl border border-border/60 bg-muted/25 p-3.5">
+        {comment.commenterAvatar ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={comment.commenterAvatar}
+            alt={comment.commenterName}
+            className="h-9 w-9 shrink-0 rounded-xl border border-border object-cover"
+          />
+        ) : (
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-gradient text-[10px] font-bold text-white">
+            {comment.commenterName?.charAt(0)?.toUpperCase() || 'LI'}
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="text-xs font-bold">{comment.commenterName}</h4>
+            {comment.commenterHeadline ? (
+              <span className="truncate text-[10px] text-muted-foreground">
+                {comment.commenterHeadline}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-1.5 text-[13px] leading-6">{comment.commentText}</p>
+        </div>
+      </div>
+
+      <div className="space-y-3 border-l-2 border-primary/40 pl-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Bot className="h-3.5 w-3.5 text-primary" />
+          <span className="text-xs font-bold">AI agent response</span>
+          {sent ? (
+            <StatusBadge tone="success">
+              <Check className="h-3 w-3" /> Published
+            </StatusBadge>
           ) : (
-            commentsList.map((cmt) => {
-              const isSent = sentReplies.has(cmt.id) || cmt.status === 'sent';
-              const currentReplyText = editingReply[cmt.id] ?? cmt.aiReplyText;
-
-              return (
-                <div key={cmt.id} className="glass-card rounded-2xl p-5 border border-border bg-card space-y-4">
-                  {/* Target Post Header Badge */}
-                  <div className="flex items-center justify-between border-b border-border pb-3">
-                    <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-500/10 px-2.5 py-1 rounded-lg border border-blue-500/20 truncate max-w-xl">
-                      On Post: "{cmt.postTitle}"
-                    </span>
-                    <span className="text-[11px] text-muted-foreground shrink-0 font-medium">
-                      {cmt.createdAt
-                        ? new Date(cmt.createdAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
-                        : 'Time unavailable'}
-                    </span>
-                  </div>
-
-                  {/* Original Commenter Info & Body */}
-                  <div className="flex items-start gap-3 bg-muted/20 p-3.5 rounded-xl border border-border/50">
-                    {cmt.commenterAvatar ? (
-                      <img
-                        src={cmt.commenterAvatar}
-                        alt={cmt.commenterName}
-                        className="h-9 w-9 shrink-0 rounded-xl border border-border object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-foreground text-[10px] font-black text-background">
-                        LI
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-bold text-xs text-foreground">{cmt.commenterName}</h4>
-                        {cmt.commenterHeadline ? <span className="truncate text-[10px] text-muted-foreground">{cmt.commenterHeadline}</span> : null}
-                      </div>
-                      <p className="text-xs text-foreground mt-1 leading-relaxed">{cmt.commentText}</p>
-                    </div>
-                  </div>
-
-                  {/* AI Auto-Reply Section */}
-                  <div className="pl-4 border-l-2 border-blue-500/40 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <Bot className="h-3.5 w-3.5 text-blue-500" />
-                        <span className="text-xs font-bold text-foreground">AI Agent Response</span>
-                        {isSent ? (
-                          <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold rounded-md border border-emerald-500/20 flex items-center gap-1">
-                            <Check className="h-3 w-3" />
-                            Published to LinkedIn
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] font-semibold rounded-md border border-amber-500/20">
-                            Manual review
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {!isSent ? (
-                      <div className="space-y-3">
-                        <textarea
-                          value={currentReplyText}
-                          onChange={(e) =>
-                            setEditingReply((prev) => ({ ...prev, [cmt.id]: e.target.value }))
-                          }
-                          rows={3}
-                          placeholder="Generate a reply or write your own…"
-                          className="product-input min-h-24 resize-y text-xs leading-relaxed"
-                        />
-
-                        <div className="flex items-center justify-between pt-1">
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              try {
-                                const res = await fetch('/api/comments', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  credentials: 'include',
-                                  body: JSON.stringify({
-                                    action: 'generate_reply',
-                                    commentText: cmt.commentText,
-                                    postText: cmt.postTitle,
-                                  }),
-                                });
-                                const data = await res.json();
-                                if (!res.ok) throw new Error(data.error?.message || 'Reply generation failed.');
-                                if (data.data?.replyText) {
-                                  setEditingReply((prev) => ({ ...prev, [cmt.id]: data.data.replyText }));
-                                }
-                              } catch (error) {
-                                setReplyError(error instanceof Error ? error.message : 'Reply generation failed.');
-                              }
-                            }}
-                            className="px-3 py-1.5 bg-muted hover:bg-accent text-foreground rounded-lg text-xs font-medium transition-colors flex items-center gap-1"
-                          >
-                            <Wand2 className="h-3 w-3 text-blue-500" />
-                            <span>{currentReplyText ? 'Regenerate reply' : 'Generate reply'}</span>
-                          </button>
-
-                          <button
-                            onClick={() => handleSendCommentReply(cmt, currentReplyText)}
-                            disabled={sendingReplyId === cmt.id || !currentReplyText.trim()}
-                            className="product-button-primary min-h-8 px-3 py-1.5 text-xs"
-                          >
-                            {sendingReplyId === cmt.id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Send className="h-3.5 w-3.5" />
-                            )}
-                            <span>Post Reply to LinkedIn</span>
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="p-3 bg-blue-500/5 border border-blue-500/20 rounded-xl text-xs text-foreground leading-relaxed font-sans">
-                        {currentReplyText}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })
+            <StatusBadge tone="warning">Manual review</StatusBadge>
           )}
         </div>
-      )}
 
-      {/* NEW POST MODAL */}
-      {showNewPostModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-          <div className="glass-card bg-background rounded-2xl max-w-lg w-full p-6 space-y-4 border border-border">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-sm text-foreground flex items-center gap-2">
-                <Plus className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                Draft New {meta.name} Post
-              </h3>
-              <button
-                onClick={() => setShowNewPostModal(false)}
-                className="p-1 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <textarea
-              value={newPostContent}
-              onChange={(e) => setNewPostContent(e.target.value)}
-              placeholder="What software engineering insight do you want to share?"
-              rows={6}
-              className="w-full p-3.5 text-xs rounded-xl bg-card border border-border focus:outline-none focus:ring-1 focus:ring-blue-500/40 leading-relaxed"
+        {!sent ? (
+          <div className="space-y-3">
+            <Textarea
+              value={replyText}
+              onChange={(event) => onReplyChange(event.target.value)}
+              rows={3}
+              placeholder="Generate a reply or write your own…"
+              className="min-h-24 text-[13px]"
             />
 
-            <div className="flex items-center justify-between pt-2">
-              <button
-                onClick={handleAiPolish}
-                disabled={isPolishing || !newPostContent.trim()}
-                className="px-3 py-1.5 bg-muted hover:bg-accent text-foreground rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-50"
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onGenerate}
+                icon={<Wand2 className="h-3.5 w-3.5 text-primary" />}
               >
-                <Wand2 className={`h-3.5 w-3.5 text-blue-500 ${isPolishing ? 'animate-spin' : ''}`} />
-                <span>AI Polish</span>
-              </button>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowNewPostModal(false)}
-                  className="px-3.5 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    setShowNewPostModal(false);
-                    setNewPostContent('');
-                  }}
-                  disabled={!newPostContent.trim()}
-                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
-                >
-                  Schedule Post
-                </button>
-              </div>
+                {replyText ? 'Regenerate reply' : 'Generate reply'}
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => onSend(replyText)}
+                loading={sending}
+                disabled={!replyText.trim()}
+                icon={<Send className="h-3.5 w-3.5" />}
+              >
+                Post reply
+              </Button>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        ) : (
+          <p className="rounded-xl border border-primary/20 bg-primary/5 p-3.5 text-[13px] leading-6">
+            {replyText}
+          </p>
+        )}
+      </div>
+    </Panel>
   );
 }

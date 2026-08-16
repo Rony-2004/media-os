@@ -1,84 +1,122 @@
 'use client';
 
+import { KeyRound, Mail, Palette, Shield, Trash2, User } from 'lucide-react';
 import { useSession } from '@/hooks/use-auth';
-import { User, Shield, Trash2 } from 'lucide-react';
-import { PageHeader, StatusBadge } from '@/components/ui/product';
+import { Button } from '@/components/ui/button';
+import { Field, Input } from '@/components/ui/field';
+import { ThemeToggle } from '@/components/theme-toggle';
+import { PageHeader, Panel, PanelSection, StatusBadge } from '@/components/ui/product';
 
 export default function SettingsPage() {
   const { data: user } = useSession();
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8 pb-12">
+    <div className="mx-auto max-w-5xl space-y-6 pb-12">
       <PageHeader
         eyebrow="Preferences"
         title="Settings"
-        description="Manage your account profile, session security, and data controls."
-        actions={<StatusBadge tone="success">Active session</StatusBadge>}
+        description="Manage your account profile, appearance, session security, and data controls."
+        actions={<StatusBadge tone="success" dot>Active session</StatusBadge>}
       />
 
-      <div className="space-y-6">
-        {/* Profile Card */}
-        <div className="glass-card rounded-2xl p-6 border space-y-4">
-          <h2 className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-            <User className="h-4 w-4 text-primary" />
-            User Profile Information
-          </h2>
+      {/* Profile summary */}
+      <Panel className="flex flex-col items-start gap-5 overflow-hidden p-6 sm:flex-row sm:items-center">
+        <div className="aurora">
+          <span className="left-[-4%] top-[-100%] h-48 w-48 animate-drift bg-primary/25" />
+        </div>
+        <span className="relative grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-brand-gradient text-2xl font-bold text-white shadow-glow">
+          {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+        </span>
+        <div className="relative min-w-0 flex-1">
+          <h2 className="truncate text-lg font-bold tracking-tight">{user?.name || 'User'}</h2>
+          <p className="truncate font-mono text-xs text-muted-foreground">{user?.email}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <StatusBadge tone="dark">{user?.plan || 'FREE'} plan</StatusBadge>
+            <StatusBadge tone={user?.role === 'ADMIN' ? 'danger' : 'neutral'}>
+              {user?.role || 'USER'}
+            </StatusBadge>
+            {user?.emailVerified ? <StatusBadge tone="success">Verified</StatusBadge> : null}
+          </div>
+        </div>
+      </Panel>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-foreground">Full Name</label>
-              <input
-                type="text"
-                defaultValue={user?.name || ''}
-                readOnly
-                className="w-full px-3 py-2 text-xs rounded-xl bg-muted/50 border border-border text-foreground font-medium"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-foreground">Email Address</label>
-              <input
+      <div className="stagger space-y-5">
+        <PanelSection
+          title="Profile information"
+          icon={<User className="h-4 w-4" />}
+          description="Read-only for now — profile editing arrives with the account API."
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Full name">
+              <Input defaultValue={user?.name || ''} readOnly className="bg-muted/40" />
+            </Field>
+            <Field label="Email address">
+              <Input
                 type="email"
                 defaultValue={user?.email || ''}
                 readOnly
-                className="w-full px-3 py-2 text-xs rounded-xl bg-muted/50 border border-border text-foreground font-medium"
+                className="bg-muted/40"
+                icon={<Mail className="h-4 w-4" />}
               />
-            </div>
+            </Field>
           </div>
-        </div>
+        </PanelSection>
 
-        {/* Security & Authentication */}
-        <div className="glass-card rounded-2xl p-6 border space-y-4">
-          <h2 className="text-xs font-extrabold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-            <Shield className="h-4 w-4 text-primary" />
-            Security & Authentication
-          </h2>
-
-          <div className="p-4 rounded-xl bg-muted/30 border border-border/50 flex items-center justify-between">
+        <PanelSection
+          title="Appearance"
+          icon={<Palette className="h-4 w-4" />}
+          description="Applies instantly and is remembered on this device."
+        >
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-muted/30 p-4">
             <div>
-              <p className="text-xs font-bold text-foreground">Password & Sessions</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                Protected by SHA-256 JWT refresh token rotation and bcrypt encryption.
+              <p className="text-xs font-bold">Colour theme</p>
+              <p className="mt-0.5 text-[11px] leading-5 text-muted-foreground">
+                Light, dark, or follow your operating system.
               </p>
             </div>
-            <button className="px-3.5 py-1.5 bg-muted hover:bg-accent text-foreground text-xs font-semibold rounded-xl transition-colors">
-              Change Password
-            </button>
+            <ThemeToggle />
           </div>
-        </div>
+        </PanelSection>
 
-        {/* Danger Zone */}
-        <div className="glass-card rounded-2xl p-6 border border-rose-500/30 space-y-3 bg-rose-500/5">
-          <h2 className="text-xs font-extrabold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-2">
-            <Trash2 className="h-4 w-4" />
-            Danger Zone
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Permanently delete your user account, connected social accounts, AI voice profiles, and all scheduled posts.
-          </p>
-          <button className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all">
-            Delete Account Data
-          </button>
-        </div>
+        <PanelSection
+          title="Security & authentication"
+          icon={<Shield className="h-4 w-4" />}
+          description="How your session is protected."
+        >
+          <div className="flex flex-col items-start justify-between gap-4 rounded-xl border border-border bg-muted/30 p-4 sm:flex-row sm:items-center">
+            <div className="flex items-start gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+                <KeyRound className="h-4 w-4" />
+              </span>
+              <div>
+                <p className="text-xs font-bold">Password & sessions</p>
+                <p className="mt-0.5 text-[11px] leading-5 text-muted-foreground">
+                  Protected by bcrypt hashing and rotating JWT refresh tokens.
+                </p>
+              </div>
+            </div>
+            <Button variant="secondary" size="sm" className="w-full sm:w-auto">
+              Change password
+            </Button>
+          </div>
+        </PanelSection>
+
+        {/* Danger zone */}
+        <Panel className="overflow-hidden border-destructive/30">
+          <div className="flex items-center gap-2 border-b border-destructive/25 bg-destructive/5 px-5 py-4">
+            <Trash2 className="h-4 w-4 text-destructive" />
+            <h2 className="text-sm font-bold text-destructive">Danger zone</h2>
+          </div>
+          <div className="flex flex-col items-start justify-between gap-4 p-5 sm:flex-row sm:items-center">
+            <p className="max-w-xl text-xs leading-6 text-muted-foreground">
+              Permanently delete your user account, connected social accounts, AI voice profiles, and
+              all scheduled posts. This cannot be undone.
+            </p>
+            <Button variant="danger" size="sm" className="w-full shrink-0 sm:w-auto">
+              Delete account data
+            </Button>
+          </div>
+        </Panel>
       </div>
     </div>
   );

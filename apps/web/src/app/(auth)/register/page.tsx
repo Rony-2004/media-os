@@ -1,10 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowRight, Loader2 } from 'lucide-react';
+import { AlertCircle, ArrowRight, Eye, EyeOff, Lock, Mail, User } from 'lucide-react';
 import { useRegister } from '@/hooks/use-auth';
+import { Button } from '@/components/ui/button';
+import { Field, Input } from '@/components/ui/field';
+import { cn } from '@/lib/utils';
+
+const rules = [
+  { label: '8+ characters', test: (value: string) => value.length >= 8 },
+  { label: '1 uppercase', test: (value: string) => /[A-Z]/.test(value) },
+  { label: '1 number', test: (value: string) => /\d/.test(value) },
+];
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -12,6 +21,10 @@ export default function RegisterPage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  const passed = useMemo(() => rules.filter((rule) => rule.test(password)).length, [password]);
+  const strengthTone = ['bg-muted', 'bg-destructive', 'bg-warning', 'bg-success'][passed];
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -27,55 +40,129 @@ export default function RegisterPage() {
     <div className="animate-fade-in">
       <div className="mb-8">
         <p className="dot-label mb-3">New workspace</p>
-        <h1 className="text-3xl font-black tracking-[-0.04em]">Create your account.</h1>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+        <h1 className="text-[32px] font-bold leading-tight tracking-[-0.04em]">Create your account.</h1>
+        <p className="mt-2.5 text-sm leading-6 text-muted-foreground">
           Set up a focused home for your social content.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-5">
         {register.error ? (
-          <div className="rounded-xl border border-primary/25 bg-primary/10 p-3 text-sm text-primary" role="alert">
-            {register.error.message}
+          <div
+            className="flex animate-fade-in items-start gap-2.5 rounded-xl border border-destructive/30 bg-destructive/10 p-3.5 text-sm text-destructive"
+            role="alert"
+          >
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{register.error.message}</span>
           </div>
         ) : null}
 
-        {[
-          { id: 'name', label: 'Full name', type: 'text', value: name, setValue: setName, autoComplete: 'name', placeholder: 'Your name' },
-          { id: 'email', label: 'Email address', type: 'email', value: email, setValue: setEmail, autoComplete: 'email', placeholder: 'you@example.com' },
-          { id: 'password', label: 'Password', type: 'password', value: password, setValue: setPassword, autoComplete: 'new-password', placeholder: 'Minimum 8 characters' },
-        ].map((field) => (
-          <label key={field.id} className="block" htmlFor={field.id}>
-            <span className="mb-2 block font-mono text-[10px] font-bold uppercase tracking-[0.14em]">
-              {field.label}
-            </span>
-            <input
-              id={field.id}
-              type={field.type}
-              value={field.value}
-              onChange={(event) => field.setValue(event.target.value)}
-              autoComplete={field.autoComplete}
-              minLength={field.id === 'password' ? 8 : undefined}
-              required
-              className="product-input"
-              placeholder={field.placeholder}
-            />
-          </label>
-        ))}
+        <Field label="Full name">
+          <Input
+            id="name"
+            type="text"
+            autoComplete="name"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            required
+            placeholder="Your name"
+            icon={<User className="h-4 w-4" />}
+          />
+        </Field>
 
-        <p className="font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground">
-          Password: 8+ characters · 1 uppercase · 1 number
-        </p>
+        <Field label="Email address">
+          <Input
+            id="email"
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            required
+            placeholder="you@example.com"
+            icon={<Mail className="h-4 w-4" />}
+          />
+        </Field>
 
-        <button type="submit" disabled={register.isPending} className="product-button-primary mt-2 w-full">
-          {register.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
+        <Field label="Password">
+          <Input
+            id="password"
+            type={showPassword ? 'text' : 'password'}
+            autoComplete="new-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            minLength={8}
+            required
+            placeholder="Minimum 8 characters"
+            icon={<Lock className="h-4 w-4" />}
+            trailing={
+              <button
+                type="button"
+                onClick={() => setShowPassword((visible) => !visible)}
+                onMouseDown={(event) => event.preventDefault()}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
+                className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            }
+          />
+        </Field>
+
+        {/* Strength meter */}
+        <div>
+          <div className="flex gap-1.5">
+            {[0, 1, 2].map((index) => (
+              <span
+                key={index}
+                className={cn(
+                  'h-1 flex-1 rounded-full transition-colors duration-300',
+                  index < passed ? strengthTone : 'bg-muted',
+                )}
+              />
+            ))}
+          </div>
+          <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1">
+            {rules.map((rule) => {
+              const ok = rule.test(password);
+              return (
+                <span
+                  key={rule.label}
+                  className={cn(
+                    'flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors',
+                    ok ? 'text-success' : 'text-muted-foreground',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'h-1.5 w-1.5 rounded-full transition-colors',
+                      ok ? 'bg-success' : 'bg-muted-foreground/40',
+                    )}
+                  />
+                  {rule.label}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+
+        <Button
+          type="submit"
+          block
+          size="lg"
+          loading={register.isPending}
+          trailingIcon={<ArrowRight className="h-4 w-4" />}
+        >
           {register.isPending ? 'Creating account…' : 'Create account'}
-        </button>
+        </Button>
       </form>
 
       <p className="mt-7 text-center text-xs text-muted-foreground">
         Already have an account?{' '}
-        <Link href="/login" className="font-bold text-foreground underline decoration-border underline-offset-4 hover:decoration-primary">
+        <Link
+          href="/login"
+          className="font-bold text-foreground underline decoration-border underline-offset-4 transition-colors hover:decoration-primary"
+        >
           Sign in
         </Link>
       </p>
