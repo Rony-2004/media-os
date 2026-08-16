@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getAuthUser, unauthorizedResponse } from '@/lib/auth-guard';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authUser = getAuthUser(req);
   if (!authUser) return unauthorizedResponse();

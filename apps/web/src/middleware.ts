@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAccessToken } from '@/lib/jwt';
 
 const PUBLIC_PATHS = [
   '/',
@@ -44,12 +43,8 @@ export function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
-  if (accessToken) {
-    const payload = verifyAccessToken(accessToken);
-    if (!payload && !refreshToken) {
-      return NextResponse.redirect(new URL('/login', req.url));
-    }
-  }
+  // Keep middleware edge-safe: avoid Node-only JWT verification here.
+  // Full token verification happens in API routes/server logic.
 
   return NextResponse.next();
 }
