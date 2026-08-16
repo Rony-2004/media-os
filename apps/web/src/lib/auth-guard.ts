@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyAccessToken, verifyRefreshToken, generateAccessToken, TokenPayload } from './jwt';
 import { hashToken, generateSecureToken } from './hash';
 import { setAccessTokenCookie, setRefreshTokenCookie } from './cookies';
-import { prisma } from './db';
 
 export const ACCESS_TOKEN_COOKIE = 'access_token';
 export const REFRESH_TOKEN_COOKIE = 'refresh_token';
@@ -28,6 +27,8 @@ export async function tryRefreshAuth(req: NextRequest): Promise<{
   accessCookie: string;
   refreshCookie: string;
 } | null> {
+  const { prisma } = await import('./db');
+
   const refreshTokenRaw = req.cookies.get(REFRESH_TOKEN_COOKIE)?.value;
   if (!refreshTokenRaw) return null;
 
