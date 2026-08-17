@@ -22,7 +22,7 @@ const helpItems = [
     icon: ShieldCheck,
     title: 'Why metrics show a dash',
     description:
-      'A dash means LinkedIn did not return a verified value. ConnectUs never substitutes a made-up zero in its place.',
+      'A dash means LinkedIn did not return a verified value. SocialFlow never substitutes a made-up zero in its place.',
     href: '/platform/linkedin?tab=published',
     label: 'Check sync status',
   },

@@ -1,32 +1,37 @@
 import { cn } from '@/lib/utils';
 
 /**
- * The ConnectUs mark: two nodes joined by a link, set in a gradient tile.
- * `gradientId` keeps multiple instances on one page from colliding.
+ * The SocialFlow mark: a 3×3 dot matrix on a solid tile, with the signal dot
+ * carried in red. Monochrome by construction — no gradients to drift.
+ *
+ * `gradientId` is retained only so existing call sites keep type-checking; the
+ * mark no longer needs a per-instance definition.
  */
-export function Logo({ className, gradientId = 'cu-mark' }: { className?: string; gradientId?: string }) {
+export function Logo({ className, gradientId }: { className?: string; gradientId?: string }) {
   return (
     <span
       aria-hidden="true"
+      data-mark={gradientId}
       className={cn(
-        'relative grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-xl shadow-soft',
+        'relative grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-md bg-foreground',
         className,
       )}
     >
       <svg viewBox="0 0 40 40" className="h-full w-full">
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="hsl(var(--primary))" />
-            <stop offset="55%" stopColor="hsl(var(--brand-2))" />
-            <stop offset="100%" stopColor="hsl(var(--accent))" />
-          </linearGradient>
-        </defs>
-        <rect width="40" height="40" rx="11" fill={`url(#${gradientId})`} />
-        <g stroke="white" strokeWidth="2.6" strokeLinecap="round" fill="none" opacity="0.95">
-          <path d="M16.5 23.5 23.5 16.5" />
-        </g>
-        <circle cx="14" cy="26" r="4.4" fill="white" opacity="0.95" />
-        <circle cx="26" cy="14" r="4.4" fill="white" opacity="0.6" />
+        {[
+          [12, 12], [20, 12], [28, 12],
+          [12, 20], [20, 20], [28, 20],
+          [12, 28], [20, 28], [28, 28],
+        ].map(([cx, cy], index) => (
+          <circle
+            key={index}
+            cx={cx}
+            cy={cy}
+            r={index === 4 ? 3.6 : 2.6}
+            className={index === 4 ? 'fill-primary' : 'fill-background'}
+            opacity={index === 4 ? 1 : index % 2 === 0 ? 0.9 : 0.45}
+          />
+        ))}
       </svg>
     </span>
   );
@@ -47,7 +52,7 @@ export function Wordmark({
       <Logo gradientId={gradientId} />
       <span className="min-w-0">
         <span className="block text-[15px] font-bold leading-none tracking-[-0.02em]">
-          Connect<span className="gradient-text">Us</span>
+          Social<span className="gradient-text">Flow</span>
         </span>
         {subtitle ? (
           <span className="mt-1 block font-mono text-[9px] font-medium uppercase tracking-[0.2em] text-muted-foreground">

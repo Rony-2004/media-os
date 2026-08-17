@@ -37,7 +37,7 @@ export function AppPreview() {
           <span className="h-2.5 w-2.5 rounded-full bg-success/60" />
         </div>
         <div className="mx-auto flex items-center gap-2 rounded-md border border-border bg-background/60 px-3 py-1 font-mono text-[10px] text-muted-foreground">
-          app.connectus.dev/platform/linkedin
+          app.socialflow.dev/platform/linkedin
         </div>
       </div>
 

@@ -1,70 +1,57 @@
 'use client';
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { readApiResponse } from '@/lib/api-response';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { authClient } from '@/lib/auth-client';
+import { toAuthUser, type AuthUser, type BetterAuthUserLike } from '@/lib/auth-user';
 
-export interface AuthUser {
-  id: string;
-  name: string;
-  email: string;
-  avatar: string | null;
-  emailVerified: boolean;
-  role: string;
-  plan: string;
-  weeklyPostLimit: number;
-}
+export type { AuthUser } from '@/lib/auth-user';
 
-interface AuthResponse {
-  data?: { user: AuthUser };
-  error?: { message?: string };
-}
+type BetterAuthError = {
+  message?: string;
+  code?: string;
+};
 
-/**
- * Fetch current session from /api/auth/me.
- * The server will auto-refresh the access token using the refresh token cookie if needed.
- */
-async function fetchSession(): Promise<AuthUser | null> {
-  const res = await fetch('/api/auth/me', {
-    credentials: 'include',
-    cache: 'no-store',
-  });
-
-  if (res.status === 401) return null;
-  if (!res.ok) return null;
-
-  const data = await res.json();
-  return data.data.user;
+function getAuthError(error: BetterAuthError | null | undefined, fallback: string): Error {
+  return new Error(error?.message || fallback);
 }
 
 export function useSession() {
-  return useQuery({
-    queryKey: ['session'],
-    queryFn: fetchSession,
-    staleTime: 5 * 60 * 1000,   // 5 minutes — don't refetch if fresh
-    gcTime: 10 * 60 * 1000,     // 10 minutes cache
-    retry: false,
-    refetchOnWindowFocus: true,  // Refresh session when user returns to tab
-  });
+  const session = authClient.useSession();
+
+  return {
+    ...session,
+    data: session.data?.user ? toAuthUser(session.data.user as BetterAuthUserLike) : null,
+    isLoading: session.isPending,
+  };
 }
 
 export function useLogin() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (input: { email: string; password: string }) => {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(input),
+    mutationFn: async (input: { email: string; password: string }): Promise<{ user: AuthUser }> => {
+      const result = await authClient.signIn.email({
+        email: input.email,
+        password: input.password,
+        callbackURL: '/dashboard',
       });
-      const data = await readApiResponse<AuthResponse>(res);
-      if (!res.ok) throw new Error(data.error?.message || 'Login failed');
-      if (!data.data) throw new Error('Login failed');
-      return data.data;
+
+      if (result.error) throw getAuthError(result.error, 'Login failed');
+      if (!result.data?.user) throw new Error('Login failed');
+
+      const user = toAuthUser(result.data.user as BetterAuthUserLike);
+      if (user.isBlocked) {
+        await authClient.signOut();
+        throw new Error('Your account has been blocked by an administrator. Please contact support.');
+      }
+      if (!user.isActive) {
+        await authClient.signOut();
+        throw new Error('Account is disabled');
+      }
+
+      return { user };
     },
     onSuccess: (data) => {
-      // Set session data immediately without refetching
       queryClient.setQueryData(['session'], data.user);
     },
   });
@@ -73,14 +60,15 @@ export function useLogin() {
 export function useRegister() {
   return useMutation({
     mutationFn: async (input: { name: string; email: string; password: string }) => {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
+      const result = await authClient.signUp.email({
+        name: input.name,
+        email: input.email,
+        password: input.password,
+        callbackURL: `/verify-email?email=${encodeURIComponent(input.email)}`,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Registration failed');
-      return data.data;
+
+      if (result.error) throw getAuthError(result.error, 'Registration failed');
+      return result.data;
     },
   });
 }
@@ -90,13 +78,10 @@ export function useLogout() {
 
   return useMutation({
     mutationFn: async () => {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-      });
+      const result = await authClient.signOut();
+      if (result.error) throw getAuthError(result.error, 'Logout failed');
     },
     onSuccess: () => {
-      // Clear all cached data
       queryClient.clear();
     },
   });
@@ -105,14 +90,29 @@ export function useLogout() {
 export function useVerifyEmail() {
   return useMutation({
     mutationFn: async (input: { email: string; otp: string }) => {
-      const res = await fetch('/api/auth/verify-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(input),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Verification failed');
-      return data.data;
+      const result = await authClient.emailOtp.verifyEmail(input);
+      if (result.error) throw getAuthError(result.error, 'Verification failed');
+      return result.data;
+    },
+  });
+}
+
+export function useRequestPasswordReset() {
+  return useMutation({
+    mutationFn: async (email: string) => {
+      const result = await authClient.emailOtp.requestPasswordReset({ email });
+      if (result.error) throw getAuthError(result.error, 'Password reset request failed');
+      return result.data;
+    },
+  });
+}
+
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: async (input: { email: string; otp: string; password: string }) => {
+      const result = await authClient.emailOtp.resetPassword(input);
+      if (result.error) throw getAuthError(result.error, 'Password reset failed');
+      return result.data;
     },
   });
 }

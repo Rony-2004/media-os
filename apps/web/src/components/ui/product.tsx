@@ -317,7 +317,7 @@ export function ProgressBar({
   className?: string;
 }) {
   const fill = {
-    primary: '[background-image:linear-gradient(90deg,hsl(var(--primary)),hsl(var(--brand-2)))]',
+    primary: 'bg-primary',
     success: 'bg-success',
     warning: 'bg-warning',
     danger: 'bg-destructive',

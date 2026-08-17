@@ -131,9 +131,7 @@ export function Switch({
       onClick={() => onChange(!checked)}
       className={cn(
         'relative h-6 w-11 shrink-0 rounded-full border transition-all duration-300 ease-spring disabled:opacity-50',
-        checked
-          ? 'border-transparent shadow-[0_0_18px_-4px_hsl(var(--primary))] [background-image:linear-gradient(135deg,hsl(var(--primary)),hsl(var(--brand-2)))]'
-          : 'border-border bg-muted',
+        checked ? 'border-transparent bg-primary' : 'border-border bg-muted',
       )}
     >
       <span

@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { getAuthUser, unauthorizedResponse } from '@/lib/auth-guard';
 
 export async function GET(req: NextRequest) {
-  const authUser = getAuthUser(req);
+  const authUser = await getAuthUser(req);
   if (!authUser) return unauthorizedResponse();
 
   // Check admin role or superuser

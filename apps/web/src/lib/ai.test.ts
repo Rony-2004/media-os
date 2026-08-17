@@ -42,7 +42,7 @@ test('uses OpenRouter as the primary AI provider when its key is configured', as
       Authorization: 'Bearer test-openrouter-key',
       'Content-Type': 'application/json',
       'HTTP-Referer': 'http://localhost:3000',
-      'X-Title': 'ConnectUs',
+      'X-Title': 'SocialFlow',
     });
     assert.deepEqual(JSON.parse(String(requestInit?.body)), {
       model: 'openrouter/auto',

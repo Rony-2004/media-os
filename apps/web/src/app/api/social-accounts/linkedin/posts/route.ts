@@ -4,7 +4,7 @@ import { getAuthUser, unauthorizedResponse } from '@/lib/auth-guard';
 import { fetchLinkedInPosts } from '@/lib/linkedin/client';
 
 export async function GET(req: NextRequest) {
-  const authUser = getAuthUser(req);
+  const authUser = await getAuthUser(req);
   if (!authUser) return unauthorizedResponse();
 
   const account = await prisma.socialAccount.findFirst({

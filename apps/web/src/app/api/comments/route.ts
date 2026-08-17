@@ -61,7 +61,7 @@ function postUrnFrom(
 }
 
 export async function GET(req: NextRequest) {
-  const authUser = getAuthUser(req);
+  const authUser = await getAuthUser(req);
   if (!authUser) return unauthorizedResponse();
 
   const account = await prisma.socialAccount.findFirst({
@@ -183,7 +183,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const authUser = getAuthUser(req);
+  const authUser = await getAuthUser(req);
   if (!authUser) return unauthorizedResponse();
 
   const parsed = commentActionSchema.safeParse(await req.json().catch(() => null));

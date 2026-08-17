@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useSession } from '@/hooks/use-auth';
 import { Sidebar } from '@/components/dashboard/sidebar';
@@ -40,7 +40,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="app-grid relative flex min-h-screen">
-      <Sidebar open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
+      {/* Sidebar reads ?tab= to resolve its active item, so it needs a
+          suspense boundary for prerendering. */}
+      <Suspense fallback={<div className="hidden w-[272px] shrink-0 border-r border-border bg-card lg:block" />}>
+        <Sidebar open={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
+      </Suspense>
       <div className="relative z-10 flex min-w-0 flex-1 flex-col">
         <Header user={user} onMenuClick={() => setMobileNavOpen(true)} />
         <main className="mx-auto w-full max-w-[1500px] flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">

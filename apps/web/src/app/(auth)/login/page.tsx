@@ -111,7 +111,7 @@ export default function LoginPage() {
       </div>
 
       <p className="text-center text-xs text-muted-foreground">
-        New to ConnectUs?{' '}
+        New to SocialFlow?{' '}
         <Link
           href="/register"
           className="font-bold text-foreground underline decoration-border underline-offset-4 transition-colors hover:decoration-primary"

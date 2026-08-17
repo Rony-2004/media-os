@@ -12,75 +12,76 @@ datasource db {
 // ============================================================
 
 model User {
-  id            String    @id @default(cuid())
-  name          String
-  email         String    @unique
-  passwordHash  String
-  emailVerified Boolean   @default(false)
-  avatar        String?
-  isActive      Boolean   @default(true)
-  role          String    @default("USER")
-  isBlocked     Boolean   @default(false)
-  plan          String    @default("FREE")
-  weeklyPostLimit Int     @default(2)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id              String   @id @default(cuid())
+  name            String
+  email           String   @unique
+  emailVerified   Boolean  @default(false)
+  avatar          String?
+  isActive        Boolean  @default(true)
+  role            String   @default("USER")
+  isBlocked       Boolean  @default(false)
+  plan            String   @default("FREE")
+  weeklyPostLimit Int      @default(2)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  refreshTokens      RefreshToken[]
-  emailVerifications EmailVerification[]
-  passwordResets     PasswordReset[]
-  socialAccounts     SocialAccount[]
-  posts              Post[]
+  accounts       Account[]
+  sessions       Session[]
+  socialAccounts SocialAccount[]
+  posts          Post[]
+  brandVoice     BrandVoice?
 
   @@map("users")
 }
 
-model RefreshToken {
-  id          String   @id @default(cuid())
-  userId      String
-  tokenHash   String   @unique
-  expiresAt   DateTime
-  createdAt   DateTime @default(now())
-  revokedAt   DateTime?
-  ipAddress   String?
-  userAgent   String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([tokenHash])
-  @@index([expiresAt])
-  @@map("refresh_tokens")
-}
-
-model EmailVerification {
-  id        String   @id @default(cuid())
-  userId    String
-  otp       String
+model Session {
+  id        String   @id
   expiresAt DateTime
-  attempts  Int      @default(0)
-  verified  Boolean  @default(false)
+  token     String   @unique
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-  @@map("email_verifications")
+  @@map("sessions")
 }
 
-model PasswordReset {
-  id        String    @id @default(cuid())
-  userId    String
-  tokenHash String    @unique
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([providerId, accountId])
   @@index([userId])
-  @@index([tokenHash])
-  @@map("password_resets")
+  @@map("accounts")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verifications")
 }
 
 // ============================================================
@@ -88,7 +89,7 @@ model PasswordReset {
 // ============================================================
 
 model SocialAccount {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   userId           String
   provider         String
   providerUserId   String
@@ -99,11 +100,11 @@ model SocialAccount {
   refreshToken     String?
   expiresAt        DateTime?
   scopes           String?
-  status           String   @default("active")
-  connectedAt      DateTime @default(now())
+  status           String    @default("active")
+  connectedAt      DateTime  @default(now())
   metadata         Json?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   posts Post[]
@@ -112,6 +113,35 @@ model SocialAccount {
   @@index([userId])
   @@index([status])
   @@map("social_accounts")
+}
+
+// ============================================================
+// Brand Voice
+// ============================================================
+
+/// Per-user writing configuration consumed by AI draft generation.
+/// One row per user; absent rows fall back to the documented defaults.
+model BrandVoice {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  formality     Int      @default(3)
+  humor         Int      @default(2)
+  emojiUsage    String   @default("light")
+  postLength    String   @default("medium")
+  imageStyle    String   @default("professional")
+  proficiency   String   @default("expert")
+  postFrequency String   @default("3_week")
+  topics        String[] @default([])
+  avoidWords    String[] @default([])
+  samplePosts   String   @default("")
+  autoApprove   Boolean  @default(false)
+  autoSchedule  Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("brand_voices")
 }
 
 // ============================================================

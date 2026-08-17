@@ -11,7 +11,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { createHash, randomBytes } from 'crypto';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -21,16 +21,6 @@ const TEST_USER = {
   password: 'Password123',
 };
 
-// Simple bcrypt-compatible hash using crypto (no external deps needed for seed)
-async function hashPassword(password: string): Promise<string> {
-  // We use a simple scrypt hash for the seed script.
-  // The actual app uses bcryptjs.
-  const salt = randomBytes(16).toString('hex');
-  const { scryptSync } = await import('crypto');
-  const hash = scryptSync(password, salt, 64).toString('hex');
-  return `scrypt:${salt}:${hash}`;
-}
-
 async function seedUser() {
   console.log('\n[SEED] Creating test user...\n');
 
@@ -39,6 +29,22 @@ async function seedUser() {
   });
 
   if (existing) {
+    const credentialAccount = await prisma.account.findFirst({
+      where: { userId: existing.id, providerId: 'credential' },
+    });
+
+    if (!credentialAccount) {
+      await prisma.account.create({
+        data: {
+          id: `credential_${existing.id}`,
+          accountId: existing.id,
+          providerId: 'credential',
+          userId: existing.id,
+          password: await bcrypt.hash(TEST_USER.password, 12),
+        },
+      });
+    }
+
     console.log('[SEED] User already exists, skipping.\n');
     console.log(`  Email:    ${TEST_USER.email}`);
     console.log(`  Password: ${TEST_USER.password}`);
@@ -46,14 +52,23 @@ async function seedUser() {
     return;
   }
 
-  const passwordHash = await hashPassword(TEST_USER.password);
+  const passwordHash = await bcrypt.hash(TEST_USER.password, 12);
 
   const user = await prisma.user.create({
     data: {
       name: TEST_USER.name,
       email: TEST_USER.email,
-      passwordHash,
       emailVerified: true,
+    },
+  });
+
+  await prisma.account.create({
+    data: {
+      id: `credential_${user.id}`,
+      accountId: user.id,
+      providerId: 'credential',
+      userId: user.id,
+      password: passwordHash,
     },
   });
 

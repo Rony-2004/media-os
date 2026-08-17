@@ -88,7 +88,7 @@ function AccountsContent() {
       <PageHeader
         eyebrow="Connections"
         title="Social accounts"
-        description="Authorize the channels ConnectUs can publish to and read engagement from. Tokens remain server-side and are revoked the moment you disconnect."
+        description="Authorize the channels SocialFlow can publish to and read engagement from. Tokens remain server-side and are revoked the moment you disconnect."
         actions={
           <StatusBadge tone={accounts?.length ? 'success' : 'neutral'} dot={!!accounts?.length}>
             {accounts?.length || 0} connected

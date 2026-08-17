@@ -4,7 +4,7 @@ import { getAuthUser, unauthorizedResponse } from '@/lib/auth-guard';
 import { sumStoredEngagement } from '@/lib/linkedin/sync';
 
 export async function GET(req: NextRequest) {
-  const authUser = getAuthUser(req);
+  const authUser = await getAuthUser(req);
   if (!authUser) return unauthorizedResponse();
 
   // Compute REAL live counts directly from PostgreSQL via Prisma

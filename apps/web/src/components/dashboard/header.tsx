@@ -85,7 +85,7 @@ export function Header({ user, onMenuClick }: HeaderProps) {
 
           <div className="min-w-0">
             <p className="hidden font-mono text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground sm:block">
-              ConnectUs
+              SocialFlow
             </p>
             <h2 className="truncate text-sm font-bold tracking-tight sm:text-[15px]">{title}</h2>
           </div>

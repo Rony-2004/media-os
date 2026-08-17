@@ -60,7 +60,7 @@ export async function callAI(options: AICallOptions): Promise<string> {
           Authorization: `Bearer ${openRouterKey}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': process.env.FRONTEND_URL || 'http://localhost:3000',
-          'X-Title': 'ConnectUs',
+          'X-Title': 'SocialFlow',
         },
         body: JSON.stringify({
           model: getModel(),

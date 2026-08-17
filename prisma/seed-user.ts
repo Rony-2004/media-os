@@ -17,6 +17,22 @@ async function seedUser() {
   });
 
   if (existing) {
+    const credentialAccount = await prisma.account.findFirst({
+      where: { userId: existing.id, providerId: 'credential' },
+    });
+
+    if (!credentialAccount) {
+      await prisma.account.create({
+        data: {
+          id: `credential_${existing.id}`,
+          accountId: existing.id,
+          providerId: 'credential',
+          userId: existing.id,
+          password: hashSync(TEST_USER.password, 12),
+        },
+      });
+    }
+
     console.log('[SEED] User already exists, skipping.\n');
     console.log(`  Email:    ${TEST_USER.email}`);
     console.log(`  Password: ${TEST_USER.password}`);
@@ -30,8 +46,17 @@ async function seedUser() {
     data: {
       name: TEST_USER.name,
       email: TEST_USER.email,
-      passwordHash,
       emailVerified: true,
+    },
+  });
+
+  await prisma.account.create({
+    data: {
+      id: `credential_${user.id}`,
+      accountId: user.id,
+      providerId: 'credential',
+      userId: user.id,
+      password: passwordHash,
     },
   });
 

@@ -2,56 +2,23 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useLogout, useSession } from '@/hooks/use-auth';
 import { useConnectedAccounts } from '@/hooks/use-connected-accounts';
 import { Logo } from '@/components/brand/marks';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { ChevronsLeft, HelpCircle, Lock, LogOut, Sparkles, X } from 'lucide-react';
 import {
-  BarChart3,
-  Bot,
-  CalendarDays,
-  ChevronsLeft,
-  FileText,
-  Gauge,
-  HelpCircle,
-  LayoutDashboard,
-  Link2,
-  Lock,
-  LogOut,
-  MessageSquareText,
-  Settings,
-  ShieldAlert,
-  SlidersHorizontal,
-  Sparkles,
-  X,
-} from 'lucide-react';
+  adminItem,
+  isNavItemActive,
+  manageItems,
+  primaryItems,
+  resolveActiveTab,
+  type NavItem,
+} from '@/components/dashboard/nav-items';
 
-type NavItem = {
-  label: string;
-  href: string;
-  icon: typeof LayoutDashboard;
-  locked?: boolean;
-};
-
-const primaryItems: NavItem[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, locked: false },
-  { label: 'Posts', href: '/platform/linkedin?tab=published', icon: FileText, locked: true },
-  { label: 'Drafts', href: '/platform/linkedin?tab=drafts', icon: MessageSquareText, locked: true },
-  { label: 'Calendar', href: '/platform/linkedin?tab=scheduled', icon: CalendarDays, locked: true },
-  { label: 'Analytics', href: '/dashboard#analytics', icon: BarChart3, locked: true },
-  { label: 'AI Writer', href: '/platform/linkedin?tab=suggestions', icon: Bot, locked: true },
-  { label: 'Brand Voice', href: '/ai-settings', icon: SlidersHorizontal, locked: true },
-];
-
-const manageItems: NavItem[] = [
-  { label: 'Accounts', href: '/accounts', icon: Link2 },
-  { label: 'Quota', href: '/quota', icon: Gauge },
-  { label: 'Settings', href: '/settings', icon: Settings },
-];
-
-const COLLAPSE_KEY = 'connectus:sidebar-collapsed';
+const COLLAPSE_KEY = 'socialflow:sidebar-collapsed';
 
 export function Sidebar({ open = false, onClose }: { open?: boolean; onClose?: () => void }) {
   const pathname = usePathname();
@@ -59,9 +26,12 @@ export function Sidebar({ open = false, onClose }: { open?: boolean; onClose?: (
   const logout = useLogout();
   const { data: user } = useSession();
   const { data: accounts = [] } = useConnectedAccounts();
+  const searchParams = useSearchParams();
   const [collapsed, setCollapsed] = useState(false);
 
   const hasConnectedAccount = accounts.some((account) => account.status === 'active');
+
+  const activeTab = resolveActiveTab(pathname, searchParams.get('tab'));
 
   useEffect(() => {
     setCollapsed(window.localStorage.getItem(COLLAPSE_KEY) === '1');
@@ -82,8 +52,7 @@ export function Sidebar({ open = false, onClose }: { open?: boolean; onClose?: (
 
   const renderItem = (item: NavItem) => {
     const isLocked = item.locked && !hasConnectedAccount;
-    const base = item.href.split('?')[0];
-    const isActive = pathname === base || (base !== '/dashboard' && pathname.startsWith(base));
+    const isActive = isNavItemActive(item, pathname, activeTab);
     const Icon = item.icon;
 
     if (isLocked) {
@@ -93,7 +62,7 @@ export function Sidebar({ open = false, onClose }: { open?: boolean; onClose?: (
           title="Connect a social account to unlock this feature."
           aria-disabled="true"
           className={cn(
-            'group relative flex h-10 cursor-not-allowed items-center gap-3 rounded-xl px-3 text-[13px] font-medium text-muted-foreground/50',
+            'relative flex h-10 cursor-not-allowed items-center gap-3 px-4 text-[13px] font-medium text-muted-foreground/45',
             collapsed && 'justify-center px-0',
           )}
         >
@@ -114,23 +83,21 @@ export function Sidebar({ open = false, onClose }: { open?: boolean; onClose?: (
         href={item.href}
         onClick={onClose}
         title={collapsed ? item.label : undefined}
+        aria-current={isActive ? 'page' : undefined}
         className={cn(
-          'group relative flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition-all duration-200 ease-spring',
+          // Full-bleed cell: no horizontal inset, so the fill and the rule run
+          // edge to edge across the rail.
+          'relative flex h-10 items-center gap-3 px-4 text-[13px] font-medium transition-colors duration-150',
           collapsed && 'justify-center px-0',
           isActive
-            ? 'bg-primary/10 font-semibold text-foreground shadow-inset'
-            : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground',
+            ? 'bg-primary/[0.12] font-semibold text-foreground'
+            : 'text-muted-foreground hover:bg-muted hover:text-foreground',
         )}
       >
         {isActive ? (
-          <span className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-brand-gradient" />
+          <span className="absolute inset-y-0 left-0 w-[3px] bg-primary" />
         ) : null}
-        <Icon
-          className={cn(
-            'h-[18px] w-[18px] shrink-0 transition-transform duration-200 group-hover:scale-110',
-            isActive && 'text-primary',
-          )}
-        />
+        <Icon className={cn('h-[18px] w-[18px] shrink-0', isActive && 'text-primary')} />
         {!collapsed ? <span className="flex-1 truncate">{item.label}</span> : null}
       </Link>
     );
@@ -138,9 +105,9 @@ export function Sidebar({ open = false, onClose }: { open?: boolean; onClose?: (
 
   const sectionLabel = (label: string) =>
     collapsed ? (
-      <div className="my-3 h-px bg-border" />
+      <div className="mx-3 my-3 h-px bg-border" />
     ) : (
-      <p className="px-3 pb-2 pt-6 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/70">
+      <p className="px-4 pb-2 pt-6 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/70">
         {label}
       </p>
     );
@@ -175,7 +142,7 @@ export function Sidebar({ open = false, onClose }: { open?: boolean; onClose?: (
             <Logo gradientId="sidebar-mark" />
             <span className={cn('min-w-0', collapsed && 'lg:hidden')}>
               <span className="block text-[15px] font-bold leading-none tracking-[-0.02em]">
-                Connect<span className="gradient-text">Us</span>
+                Social<span className="gradient-text">Flow</span>
               </span>
               <span className="mt-1 block font-mono text-[9px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
                 Social OS
@@ -206,25 +173,24 @@ export function Sidebar({ open = false, onClose }: { open?: boolean; onClose?: (
         </div>
 
         {/* Navigation */}
-        <nav className="scrollbar-none flex-1 overflow-y-auto px-3 py-3" aria-label="Main navigation">
+        <nav className="scrollbar-none flex-1 overflow-y-auto py-3" aria-label="Main navigation">
           {!collapsed ? (
-            <p className="px-3 pb-2 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/70">
+            <p className="px-4 pb-2 font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-muted-foreground/70">
               Workspace
             </p>
           ) : null}
-          <div className="space-y-1">{primaryItems.map(renderItem)}</div>
+          <div>{primaryItems.map(renderItem)}</div>
 
           {sectionLabel('Manage')}
-          <div className="space-y-1">
+          <div>
             {manageItems.map(renderItem)}
             {user?.role === 'ADMIN' || user?.email === 'admin@connectus.dev'
-              ? renderItem({ label: 'Admin Portal', href: '/admin', icon: ShieldAlert })
+              ? renderItem(adminItem)
               : null}
           </div>
 
           {!collapsed && !hasConnectedAccount ? (
-            <div className="relative mt-6 overflow-hidden rounded-2xl border border-primary/20 bg-primary/5 p-4">
-              <div className="pointer-events-none absolute -right-6 -top-8 h-20 w-20 rounded-full bg-primary/25 blur-2xl" />
+            <div className="relative mx-3 mt-6 overflow-hidden rounded-lg border border-primary/20 bg-primary/5 p-4">
               <Sparkles className="h-4 w-4 text-primary" />
               <p className="mt-2.5 text-xs font-bold leading-snug">Unlock the full workspace</p>
               <p className="mt-1 text-[11px] leading-5 text-muted-foreground">

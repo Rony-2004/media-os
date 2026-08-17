@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /* ==========================================================================
-   ConnectUs — design tokens
+   SocialFlow — design tokens
 
    Monochrome base, one red signal colour. Warm off-white and near-black
    surfaces, hairline borders, dot-matrix texture. No gradients, no glass,
@@ -239,6 +239,13 @@
     background-color: hsl(var(--background));
   }
 
+  /* Retired decoration. The blurred colour blobs are off-direction for a
+     monochrome system, so the container is neutralised at the source rather
+     than deleted from every page that still nests one. */
+  .aurora {
+    display: none;
+  }
+
   /* Corner registration ticks — a technical-drawing frame. */
   .ticked::before,
   .ticked::after {
@@ -259,6 +266,18 @@
   .display {
     @apply font-bold tracking-[-0.045em];
     line-height: 0.94;
+  }
+
+  /* Was a violet→cyan ramp; now the single red signal, which is how emphasis
+     is carried in a monochrome system. */
+  .gradient-text {
+    @apply text-primary;
+  }
+
+  /* A hairline along the top edge of a surface. */
+  .edge-light::before {
+    content: '';
+    @apply pointer-events-none absolute inset-x-0 top-0 h-px bg-foreground/[0.06];
   }
 
   .eyebrow {

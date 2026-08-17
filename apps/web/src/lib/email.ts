@@ -2,16 +2,12 @@ import nodemailer from 'nodemailer';
 
 const IS_DEVELOPMENT = process.env.NODE_ENV !== 'production';
 
-/**
- * Send an email. In development mode, prints to console instead.
- */
 export async function sendEmail(options: {
   to: string;
   subject: string;
   text: string;
   html?: string;
 }) {
-  // Development mode: print to terminal
   if (IS_DEVELOPMENT) {
     console.log('\n========================================');
     console.log('[DEV EMAIL]');
@@ -22,7 +18,6 @@ export async function sendEmail(options: {
     return;
   }
 
-  // Production mode: send via Nodemailer
   const transporter = nodemailer.createTransport({
     host: process.env.EMAIL_HOST,
     port: parseInt(process.env.EMAIL_PORT || '587'),
@@ -42,36 +37,24 @@ export async function sendEmail(options: {
   });
 }
 
-/**
- * Send OTP email for email verification.
- */
-export async function sendOTPEmail(email: string, otp: string) {
+export type AuthOTPType = 'sign-in' | 'email-verification' | 'forget-password' | 'change-email';
+
+export async function sendAuthOTPEmail(email: string, otp: string, type: AuthOTPType) {
+  const subjectByType: Record<AuthOTPType, string> = {
+    'sign-in': 'Your sign-in code - AI Social OS',
+    'email-verification': 'Verify your email - AI Social OS',
+    'forget-password': 'Reset your password - AI Social OS',
+    'change-email': 'Confirm your email change - AI Social OS',
+  };
+
   if (IS_DEVELOPMENT) {
-    console.log(`\n[DEV] OTP for ${email}: ${otp}\n`);
+    console.log(`\n[DEV] ${type} OTP for ${email}: ${otp}\n`);
   }
 
   await sendEmail({
     to: email,
-    subject: 'Verify your email - AI Social OS',
+    subject: subjectByType[type],
     text: `Your verification code is: ${otp}\n\nThis code expires in 10 minutes.`,
     html: `<p>Your verification code is: <strong>${otp}</strong></p><p>This code expires in 10 minutes.</p>`,
-  });
-}
-
-/**
- * Send password reset email.
- */
-export async function sendPasswordResetEmail(email: string, resetToken: string) {
-  const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
-
-  if (IS_DEVELOPMENT) {
-    console.log(`\n[DEV] Password reset for ${email}: ${resetUrl}\n`);
-  }
-
-  await sendEmail({
-    to: email,
-    subject: 'Reset your password - AI Social OS',
-    text: `Reset your password: ${resetUrl}\n\nThis link expires in 1 hour.`,
-    html: `<p>Reset your password: <a href="${resetUrl}">${resetUrl}</a></p><p>This link expires in 1 hour.</p>`,
   });
 }

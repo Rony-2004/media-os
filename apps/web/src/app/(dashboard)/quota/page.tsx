@@ -48,7 +48,7 @@ export default function QuotaPage() {
       <PageHeader
         eyebrow="Plan & usage"
         title="Quota"
-        description="A clear view of the limits currently enforced by your ConnectUs plan."
+        description="A clear view of the limits currently enforced by your SocialFlow plan."
         actions={<StatusBadge tone="dark">{user?.plan || 'FREE'} plan</StatusBadge>}
       />
 

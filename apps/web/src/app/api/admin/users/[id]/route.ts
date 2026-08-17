@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { getAuthUser, unauthorizedResponse } from '@/lib/auth-guard';
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const authUser = getAuthUser(req);
+  const authUser = await getAuthUser(req);
   if (!authUser) return unauthorizedResponse();
 
   const currentUser = await prisma.user.findUnique({ where: { id: authUser.userId } });

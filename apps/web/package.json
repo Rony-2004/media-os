@@ -11,13 +11,14 @@
     "test": "tsx --test src/**/*.test.ts"
   },
   "dependencies": {
+    "@better-auth/infra": "^0.3.7",
+    "@better-auth/prisma-adapter": "^1.6.29",
     "@prisma/client": "^6.9.0",
     "@tanstack/react-query": "^5.56.0",
     "bcryptjs": "^2.4.3",
+    "better-auth": "^1.6.29",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
-    "cookie": "^1.0.2",
-    "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.447.0",
     "next": "^15.0.0",
     "next-themes": "^0.4.3",
@@ -25,12 +26,10 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^2.5.0",
-    "zod": "^3.23.8"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
-    "@types/cookie": "^1.0.0",
-    "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.0.0",
     "@types/nodemailer": "^6.4.16",
     "@types/react": "^19.0.0",

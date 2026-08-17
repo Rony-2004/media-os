@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
@@ -28,10 +28,12 @@ import {
   Send,
   Sparkles,
   ThumbsUp,
+  UserCheck,
   Wand2,
   X,
 } from 'lucide-react';
 import { readApiResponse } from '@/lib/api-response';
+import { useBrandVoice, useUpdateBrandVoice } from '@/hooks/use-brand-voice';
 import { LinkedInMark } from '@/components/brand/marks';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -183,6 +185,12 @@ export default function PlatformPage() {
   const [replyError, setReplyError] = useState<string | null>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
 
+  const { data: brandVoice } = useBrandVoice();
+  const updateVoice = useUpdateBrandVoice();
+  const autoApprove = brandVoice?.autoApprove ?? false;
+  // Suggestion ids already handed to the agent, so a re-render never queues twice.
+  const autoApproved = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     const requestedTab = new URLSearchParams(window.location.search).get('tab');
     if (['suggestions', 'scheduled', 'published', 'drafts', 'comments'].includes(requestedTab || '')) {
@@ -289,6 +297,27 @@ export default function PlatformPage() {
     (post) => post.engagementSync && post.engagementSync.status !== 'ok',
   );
   const syncIsLive = publishedPosts.length > 0 && syncFailures.length === 0;
+
+  // In agent mode the queue is filled without a review step. Publishing itself
+  // still requires an explicit action — nothing reaches LinkedIn unattended.
+  useEffect(() => {
+    if (!autoApprove || approve.isPending) return;
+
+    const pending = visibleSuggestions.filter((s) => !autoApproved.current.has(s.id));
+    if (pending.length === 0) return;
+
+    pending.forEach((s) => autoApproved.current.add(s.id));
+    approve.mutate({
+      action: 'approve_all',
+      suggestions: pending.map((s) => ({ ...s, content: editingContent[s.id] || s.content })),
+    });
+    setDismissed((prev) => {
+      const next = new Set(prev);
+      pending.forEach((s) => next.add(s.id));
+      return next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoApprove, visibleSuggestions, approve.isPending]);
 
   const handleApproveAll = () => {
     approve.mutate({
@@ -423,17 +452,13 @@ export default function PlatformPage() {
             </div>
 
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-              <div className="flex items-center gap-2.5 rounded-xl border border-border bg-muted/40 px-3 py-1.5">
-                <Bot className="h-4 w-4 shrink-0 text-primary" />
-                <span className="flex flex-col leading-tight">
-                  <span className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                    Reply mode
-                  </span>
-                  <span className="text-[11px] font-bold">Human review</span>
-                </span>
-              </div>
+              <ApprovalModeToggle
+                autoApprove={autoApprove}
+                pending={updateVoice.isPending}
+                onChange={(next) => updateVoice.mutate({ autoApprove: next })}
+              />
 
-              {visibleSuggestions.length > 0 ? (
+              {visibleSuggestions.length > 0 && !autoApprove ? (
                 <Button
                   variant="success"
                   size="sm"
@@ -503,11 +528,19 @@ export default function PlatformPage() {
           hint={`Live on ${meta.name}`}
         />
         <MetricCard
-          label="Reply assistant"
-          value={<span className="text-lg text-success">Manual</span>}
-          accent="info"
+          label="Approval mode"
+          value={
+            <span className={cn('text-lg', autoApprove ? 'text-primary' : 'text-success')}>
+              {autoApprove ? 'Agent' : 'Human'}
+            </span>
+          }
+          accent={autoApprove ? 'primary' : 'info'}
           icon={<Bot className="h-4 w-4" />}
-          hint="Nothing posts without approval"
+          hint={
+            autoApprove
+              ? 'Drafts queue themselves for review'
+              : 'Nothing queues without your approval'
+          }
         />
       </div>
 
@@ -527,6 +560,12 @@ export default function PlatformPage() {
       {/* ── Tab: suggestions ─────────────────────────────────────────── */}
       {activeTab === 'suggestions' ? (
         <TabPanel className="space-y-3">
+          {autoApprove ? (
+            <InlineNotice title="Agent approval is on" tone="info" icon={<Bot className="h-4 w-4" />}>
+              New drafts move straight to the scheduled queue without appearing here. Publishing
+              still needs an explicit action — switch to Human to review each draft first.
+            </InlineNotice>
+          ) : null}
           {suggestionsLoading ? (
             <CardSkeleton count={3} />
           ) : suggestionsFailed ? (
@@ -919,6 +958,60 @@ export default function PlatformPage() {
 }
 
 // ─── Pieces ──────────────────────────────────────────────────────────────────
+
+/**
+ * Two-state switch between human approval and agent approval. The choice is
+ * persisted on the brand voice config, so it survives reloads and is the same
+ * value the generator reads.
+ */
+function ApprovalModeToggle({
+  autoApprove,
+  pending,
+  onChange,
+}: {
+  autoApprove: boolean;
+  pending: boolean;
+  onChange: (autoApprove: boolean) => void;
+}) {
+  const options = [
+    { value: false, label: 'Human', icon: UserCheck, title: 'You approve every draft before it is queued' },
+    { value: true, label: 'Agent', icon: Bot, title: 'The agent queues drafts without a review step' },
+  ];
+
+  return (
+    <div className="flex items-center gap-2.5 rounded-xl border border-border bg-muted/40 py-1.5 pl-3 pr-1.5">
+      <span className="font-mono text-[9px] font-bold uppercase leading-tight tracking-[0.14em] text-muted-foreground">
+        Approval
+      </span>
+      <div className="flex items-center gap-0.5 rounded-lg border border-border bg-background p-0.5" role="radiogroup" aria-label="Approval mode">
+        {options.map((option) => {
+          const Icon = option.icon;
+          const isActive = option.value === autoApprove;
+          return (
+            <button
+              key={option.label}
+              type="button"
+              role="radio"
+              aria-checked={isActive}
+              title={option.title}
+              disabled={pending}
+              onClick={() => onChange(option.value)}
+              className={cn(
+                'flex items-center gap-1.5 rounded px-2 py-1 text-[11px] font-bold transition-colors disabled:opacity-50',
+                isActive
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function PostBody({ content }: { content: string }) {
   return (

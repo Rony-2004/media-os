@@ -17,15 +17,15 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: { default: 'ConnectUs — the social operating system', template: '%s · ConnectUs' },
+  title: { default: 'SocialFlow — the social operating system', template: '%s · SocialFlow' },
   description:
     'A focused operating system for creating, publishing, and understanding social content. Draft with intent, publish with control, read real signals.',
 };
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#fbfaff' },
-    { media: '(prefers-color-scheme: dark)', color: '#0a0810' },
+    { media: '(prefers-color-scheme: light)', color: '#faf9f5' },
+    { media: '(prefers-color-scheme: dark)', color: '#0d0c0c' },
   ],
 };
 

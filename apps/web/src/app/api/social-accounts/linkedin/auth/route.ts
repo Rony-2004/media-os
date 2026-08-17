@@ -5,7 +5,7 @@ import { linkedinStateStore } from '@/lib/linkedin-store';
 import { LINKEDIN_OAUTH_SCOPES } from '@/lib/linkedin/oauth';
 
 export async function GET(req: NextRequest) {
-  const authUser = getAuthUser(req);
+  const authUser = await getAuthUser(req);
 
   if (!authUser) {
     return NextResponse.redirect(new URL('/login', req.url));

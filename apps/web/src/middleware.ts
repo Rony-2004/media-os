@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAccessToken } from '@/lib/jwt';
+import { getSessionCookie } from 'better-auth/cookies';
 
 const PUBLIC_PATHS = [
   '/',
@@ -8,12 +8,7 @@ const PUBLIC_PATHS = [
   '/verify-email',
   '/forgot-password',
   '/reset-password',
-  '/api/auth/login',
-  '/api/auth/register',
-  '/api/auth/verify-email',
-  '/api/auth/forgot-password',
-  '/api/auth/reset-password',
-  '/api/auth/refresh',
+  '/api/auth',
   '/api/social-accounts/linkedin/callback',
 ];
 
@@ -37,18 +32,8 @@ export function middleware(req: NextRequest) {
   const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
   if (!isProtected) return NextResponse.next();
 
-  const accessToken = req.cookies.get('access_token')?.value;
-  const refreshToken = req.cookies.get('refresh_token')?.value;
-
-  if (!accessToken && !refreshToken) {
+  if (!getSessionCookie(req)) {
     return NextResponse.redirect(new URL('/login', req.url));
-  }
-
-  if (accessToken) {
-    const payload = verifyAccessToken(accessToken);
-    if (!payload && !refreshToken) {
-      return NextResponse.redirect(new URL('/login', req.url));
-    }
   }
 
   return NextResponse.next();

@@ -2,24 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getAuthUser, unauthorizedResponse } from '@/lib/auth-guard';
 import { callAI } from '@/lib/ai';
+import {
+  buildSystemPrompt,
+  buildVoiceDirectives,
+  getBrandVoice,
+  lengthRange,
+  postIntervalDays,
+  type BrandVoiceConfig,
+} from '@/lib/brand-voice';
 import { z } from 'zod';
-
-// ─── Humanized Engineering System Prompt ─────────────────────────────────────
-
-const SYSTEM_ENGINEERING_PROMPT = `You are a friendly Senior Software Engineer sharing genuine tech insights on LinkedIn.
-
-TONE & STYLE:
-- Human, conversational, and easy to read. Write like a passionate developer explaining a cool concept to a teammate over coffee.
-- ABSOLUTELY NO COMPLEX MATH SYMBOLS or LATEX (NO $O(N^2)$, NO ODEs, NO LaTeX math notation).
-- Use clear real-world analogies to make technical concepts digestible.
-- Explain core mechanics clearly (e.g. how bcrypt hashing introduces deliberate computational delay so hackers can't brute-force passwords easily).
-- NO corporate marketing buzzwords ("game-changer", "paradigm shift", "synergy").
-
-STRUCTURE:
-1. Hook: A clear, eye-opening tech fact or release takeaway.
-2. Core Breakdown: Simple explanation of how and why it works under the hood.
-3. Practical Takeaway: What senior developers and teams should keep in mind.
-4. Engaging question to start a developer discussion + 3-4 targeted hashtags (#SoftwareEngineering #Backend #WebDev #Coding).`;
 
 interface TrendingTopic {
   id: string;
@@ -57,19 +48,32 @@ function getMatchingImageForTopic(trend: string, category: string): string {
 
 // ─── Generate Humanized Software Engineering Topics ─────────────────────────
 
-async function fetchSoftwareEngineeringTopics(): Promise<TrendingTopic[]> {
-  const prompt = `List 3 engaging software engineering topics or core computer science concepts (like Bcrypt password security, Anthropic model context handling, or PostgreSQL concurrency) for developer posts.
+async function fetchTopics(config: BrandVoiceConfig): Promise<TrendingTopic[]> {
+  const focus =
+    config.topics.length > 0
+      ? `The reader's subject areas are: ${config.topics.join(', ')}. Every topic must sit inside one of them.`
+      : 'Choose broadly useful software engineering and technology topics.';
 
-Format as JSON array of 3 objects:
+  const banned =
+    config.avoidWords.length > 0
+      ? `\nNever use any of these words in a title: ${config.avoidWords.join(', ')}.`
+      : '';
+
+  const prompt = `List 3 specific, concrete topics suitable for professional posts.
+
+${focus}${banned}
+
+Format as a JSON array of 3 objects:
 [
-  { "trend": "Clear Developer Topic Title", "category": "AI Infrastructure|Backend|Database|Security|Systems", "source": "Engineering Breakdown", "velocity": "rising|peaking|emerging" },
+  { "trend": "Specific Topic Title", "category": "one of the subject areas above", "source": "Engineering Breakdown", "velocity": "rising|peaking|emerging" },
   ...
 ]
 
 Return ONLY the JSON array.`;
 
   const raw = await callAI({
-    system: 'You return only valid JSON arrays of humanized software engineering topic titles. No math notation, no clickbait.',
+    system:
+      'You return only valid JSON arrays of specific, non-clickbait topic titles. No maths notation.',
     messages: [{ role: 'user', content: prompt }],
     maxTokens: 400,
   });
@@ -92,39 +96,46 @@ Return ONLY the JSON array.`;
 
 // ─── Generate post content for a trend ─────────────────────────────────────
 
-async function generatePostForTrend(topic: TrendingTopic): Promise<string> {
-  const prompt = `Write a human, easy-to-understand technical LinkedIn post about: "${topic.trend}"
+async function generatePostForTrend(
+  topic: TrendingTopic,
+  config: BrandVoiceConfig,
+): Promise<string> {
+  const [, maxChars] = lengthRange[config.postLength];
+
+  const prompt = `Write one post about: "${topic.trend}"
 Source: ${topic.source}
 
-Requirements:
-- Written in clear, plain developer terms (no LaTeX math like $O(N^2)$, no scary equations)
-- Explain the real-world engineering mechanics using simple analogies
-- Highlight why this matters for software developers building applications today
-- NO corporate marketing buzzwords ("game-changer", "paradigm shift", "synergy")
-- 400-750 characters total
-- End with a friendly discussion question for devs and 3-4 hashtags`;
+Apply the voice exactly as specified:
+${buildVoiceDirectives(config)}
+
+Return only the post text — no preamble, no title, no surrounding quotes.`;
 
   return callAI({
-    system: SYSTEM_ENGINEERING_PROMPT,
+    system: buildSystemPrompt(config),
+    // Roughly four characters per token, plus headroom for hashtags.
+    maxTokens: Math.ceil(maxChars / 3) + 120,
     messages: [{ role: 'user', content: prompt }],
-    maxTokens: 750,
   });
 }
 
 // ─── GET /api/ai/suggestions ────────────────────────────────────────────────
 
 export async function GET(req: NextRequest) {
-  const authUser = getAuthUser(req);
+  const authUser = await getAuthUser(req);
   if (!authUser) return unauthorizedResponse();
 
   try {
-    const topics = await fetchSoftwareEngineeringTopics();
+    const config = await getBrandVoice(authUser.userId);
+    const topics = await fetchTopics(config);
+    const intervalDays = postIntervalDays(config.postFrequency);
+
     const suggestions = await Promise.all(
       topics.map(async (topic, i) => {
-        const content = await generatePostForTrend(topic);
+        const content = await generatePostForTrend(topic, config);
 
+        // Space slots by the configured cadence rather than a fixed one a day.
         const scheduledAt = new Date();
-        scheduledAt.setDate(scheduledAt.getDate() + i + 1);
+        scheduledAt.setDate(scheduledAt.getDate() + intervalDays * (i + 1));
         scheduledAt.setHours(9, 0, 0, 0);
 
         return {
@@ -164,7 +175,7 @@ export async function GET(req: NextRequest) {
 // ─── POST /api/ai/suggestions ───────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
-  const authUser = getAuthUser(req);
+  const authUser = await getAuthUser(req);
   if (!authUser) return unauthorizedResponse();
 
   const { action, suggestions } = await req.json();

@@ -19,7 +19,6 @@ const config: Config = {
         primary: {
           DEFAULT: 'hsl(var(--primary))',
           foreground: 'hsl(var(--primary-foreground))',
-          soft: 'hsl(var(--primary) / 0.12)',
         },
         secondary: {
           DEFAULT: 'hsl(var(--secondary))',
@@ -62,32 +61,33 @@ const config: Config = {
         sans: ['var(--font-sans)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['var(--font-mono)', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
+      // Crisp, industrial geometry — nothing rounder than 16px.
       borderRadius: {
-        '4xl': 'calc(var(--radius) + 1.25rem)',
-        '3xl': 'calc(var(--radius) + 0.75rem)',
-        '2xl': 'calc(var(--radius) + 0.375rem)',
-        xl: 'var(--radius)',
-        lg: 'calc(var(--radius) - 0.25rem)',
-        md: 'calc(var(--radius) - 0.4rem)',
-        sm: 'calc(var(--radius) - 0.55rem)',
+        sm: '2px',
+        DEFAULT: '4px',
+        md: '4px',
+        lg: '6px',
+        xl: '8px',
+        '2xl': '12px',
+        '3xl': '16px',
+        '4xl': '20px',
       },
+      // Elevation is carried by borders, not shadows. These stay near-flat.
       boxShadow: {
-        xs: '0 1px 2px hsl(var(--shadow-color) / 0.06)',
-        soft: '0 1px 2px hsl(var(--shadow-color) / 0.05), 0 4px 12px -2px hsl(var(--shadow-color) / 0.06)',
-        card: '0 1px 1px hsl(var(--shadow-color) / 0.04), 0 8px 24px -6px hsl(var(--shadow-color) / 0.10)',
-        lift: '0 2px 4px hsl(var(--shadow-color) / 0.05), 0 18px 40px -12px hsl(var(--shadow-color) / 0.22)',
-        pop: '0 24px 60px -18px hsl(var(--shadow-color) / 0.35)',
-        glow: '0 0 0 1px hsl(var(--primary) / 0.28), 0 8px 32px -8px hsl(var(--primary) / 0.45)',
-        'glow-lg': '0 0 0 1px hsl(var(--primary) / 0.3), 0 20px 70px -16px hsl(var(--primary) / 0.6)',
-        inset: 'inset 0 1px 0 0 hsl(var(--hairline))',
+        xs: '0 1px 1px hsl(var(--shadow-color) / 0.04)',
+        soft: '0 1px 2px hsl(var(--shadow-color) / 0.05)',
+        card: '0 1px 2px hsl(var(--shadow-color) / 0.04)',
+        lift: '0 2px 8px -2px hsl(var(--shadow-color) / 0.10)',
+        pop: '0 8px 32px -8px hsl(var(--shadow-color) / 0.28)',
+        glow: '0 0 0 1px hsl(var(--primary) / 0.35)',
+        'glow-lg': '0 0 0 1px hsl(var(--primary) / 0.45)',
+        inset: 'inset 0 0 0 0 transparent',
       },
       backgroundImage: {
-        'brand-gradient':
-          'linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--brand-2)) 50%, hsl(var(--accent)) 100%)',
-        'brand-sheen':
-          'linear-gradient(120deg, transparent 20%, hsl(0 0% 100% / 0.35) 50%, transparent 80%)',
+        // Kept as a named token, now a flat signal fill rather than a gradient.
+        'brand-gradient': 'linear-gradient(hsl(var(--primary)), hsl(var(--primary)))',
         'fade-border':
-          'linear-gradient(90deg, transparent, hsl(var(--border)) 20%, hsl(var(--border)) 80%, transparent)',
+          'linear-gradient(90deg, transparent, hsl(var(--border)) 15%, hsl(var(--border)) 85%, transparent)',
       },
       transitionTimingFunction: {
         spring: 'cubic-bezier(0.16, 1, 0.3, 1)',
@@ -95,41 +95,28 @@ const config: Config = {
       },
       keyframes: {
         'fade-in': {
-          from: { opacity: '0', transform: 'translateY(8px)' },
+          from: { opacity: '0', transform: 'translateY(6px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
         'fade-in-scale': {
-          from: { opacity: '0', transform: 'scale(0.97)' },
+          from: { opacity: '0', transform: 'scale(0.98)' },
           to: { opacity: '1', transform: 'scale(1)' },
         },
         'slide-down': {
-          from: { opacity: '0', transform: 'translateY(-8px)' },
+          from: { opacity: '0', transform: 'translateY(-6px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
-        },
-        'slide-in-right': {
-          from: { opacity: '0', transform: 'translateX(12px)' },
-          to: { opacity: '1', transform: 'translateX(0)' },
         },
         float: {
           '0%, 100%': { transform: 'translateY(0)' },
-          '50%': { transform: 'translateY(-10px)' },
-        },
-        drift: {
-          '0%, 100%': { transform: 'translate3d(0,0,0) scale(1)' },
-          '33%': { transform: 'translate3d(4%, -6%, 0) scale(1.08)' },
-          '66%': { transform: 'translate3d(-5%, 4%, 0) scale(0.95)' },
+          '50%': { transform: 'translateY(-6px)' },
         },
         shimmer: {
           '100%': { transform: 'translateX(100%)' },
         },
-        'gradient-pan': {
-          '0%, 100%': { backgroundPosition: '0% 50%' },
-          '50%': { backgroundPosition: '100% 50%' },
-        },
         'pulse-ring': {
-          '0%': { boxShadow: '0 0 0 0 hsl(var(--success) / 0.5)' },
-          '70%': { boxShadow: '0 0 0 6px hsl(var(--success) / 0)' },
-          '100%': { boxShadow: '0 0 0 0 hsl(var(--success) / 0)' },
+          '0%': { boxShadow: '0 0 0 0 hsl(var(--primary) / 0.55)' },
+          '70%': { boxShadow: '0 0 0 5px hsl(var(--primary) / 0)' },
+          '100%': { boxShadow: '0 0 0 0 hsl(var(--primary) / 0)' },
         },
         marquee: {
           from: { transform: 'translateX(0)' },
@@ -139,19 +126,25 @@ const config: Config = {
           from: { transform: 'scaleY(0)' },
           to: { transform: 'scaleY(1)' },
         },
+        'caret-blink': {
+          '0%, 45%': { opacity: '1' },
+          '50%, 95%': { opacity: '0' },
+        },
       },
       animation: {
-        'fade-in': 'fade-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both',
-        'fade-in-scale': 'fade-in-scale 260ms cubic-bezier(0.16, 1, 0.3, 1) both',
-        'slide-down': 'slide-down 200ms cubic-bezier(0.16, 1, 0.3, 1) both',
-        'slide-in-right': 'slide-in-right 320ms cubic-bezier(0.16, 1, 0.3, 1) both',
-        float: 'float 7s ease-in-out infinite',
-        drift: 'drift 22s ease-in-out infinite',
-        shimmer: 'shimmer 2.2s ease-in-out infinite',
-        'gradient-pan': 'gradient-pan 8s ease infinite',
-        'pulse-ring': 'pulse-ring 2s cubic-bezier(0.16, 1, 0.3, 1) infinite',
-        marquee: 'marquee 38s linear infinite',
-        'bar-grow': 'bar-grow 700ms cubic-bezier(0.16, 1, 0.3, 1) both',
+        'fade-in': 'fade-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both',
+        'fade-in-scale': 'fade-in-scale 220ms cubic-bezier(0.16, 1, 0.3, 1) both',
+        'slide-down': 'slide-down 180ms cubic-bezier(0.16, 1, 0.3, 1) both',
+        float: 'float 6s ease-in-out infinite',
+        // Retired: the aurora blobs this drove are gone. Kept as a no-op so any
+        // stale reference cannot reintroduce motion.
+        drift: 'none',
+        'gradient-pan': 'none',
+        shimmer: 'shimmer 2s ease-in-out infinite',
+        'pulse-ring': 'pulse-ring 2.4s cubic-bezier(0.16, 1, 0.3, 1) infinite',
+        marquee: 'marquee 40s linear infinite',
+        'bar-grow': 'bar-grow 600ms cubic-bezier(0.16, 1, 0.3, 1) both',
+        'caret-blink': 'caret-blink 1.2s steps(1) infinite',
       },
     },
   },

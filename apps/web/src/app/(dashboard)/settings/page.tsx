@@ -91,7 +91,7 @@ export default function SettingsPage() {
               <div>
                 <p className="text-xs font-bold">Password & sessions</p>
                 <p className="mt-0.5 text-[11px] leading-5 text-muted-foreground">
-                  Protected by bcrypt hashing and rotating JWT refresh tokens.
+                  Protected by Better Auth sessions and bcrypt-compatible password hashing.
                 </p>
               </div>
             </div>

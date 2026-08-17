@@ -7,7 +7,6 @@ import {
   BarChart3,
   Bot,
   CalendarClock,
-  Check,
   ChevronDown,
   Github,
   Layers,
@@ -20,7 +19,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Logo, LinkedInMark } from '@/components/brand/marks';
+import { Logo } from '@/components/brand/marks';
 import { ThemeSwitchButton } from '@/components/theme-toggle';
 import { AppPreview } from '@/components/marketing/preview';
 
@@ -29,7 +28,6 @@ import { AppPreview } from '@/components/marketing/preview';
 const navLinks = [
   { label: 'Features', href: '#features' },
   { label: 'Workflow', href: '#workflow' },
-  { label: 'Pricing', href: '#pricing' },
   { label: 'FAQ', href: '#faq' },
 ];
 
@@ -109,42 +107,6 @@ const testimonials = [
   },
 ];
 
-const pricing = [
-  {
-    name: 'Free',
-    price: '$0',
-    cadence: 'forever',
-    description: 'Enough to feel the whole loop before you commit.',
-    features: ['2 published posts / week', '1 connected account', 'AI drafting & reply suggestions', 'Verified engagement reads'],
-    cta: 'Start free',
-    featured: false,
-  },
-  {
-    name: 'Pro',
-    price: '$24',
-    cadence: 'per month',
-    description: 'For people who post on a real cadence.',
-    features: [
-      '25 published posts / week',
-      'Unlimited drafts & scheduling',
-      'Brand voice profiles',
-      'Comment reply assistant',
-      'Priority engagement sync',
-    ],
-    cta: 'Start free trial',
-    featured: true,
-  },
-  {
-    name: 'Enterprise',
-    price: 'Custom',
-    cadence: 'talk to us',
-    description: 'Teams, approvals, and audit trails.',
-    features: ['100+ posts / week', 'Multiple seats & roles', 'Approval workflows', 'Audit log & SSO', 'Dedicated support'],
-    cta: 'Contact sales',
-    featured: false,
-  },
-];
-
 const faqs = [
   {
     q: 'Does anything publish automatically?',
@@ -190,7 +152,7 @@ export default function HomePage() {
           <Link href="/" className="flex items-center gap-3">
             <Logo gradientId="nav-mark" />
             <span className="text-[15px] font-bold tracking-[-0.02em]">
-              Connect<span className="gradient-text">Us</span>
+              Social<span className="gradient-text">Flow</span>
             </span>
           </Link>
 
@@ -244,23 +206,12 @@ export default function HomePage() {
 
       {/* ── Hero ────────────────────────────────────────────────────────── */}
       <section className="relative overflow-hidden pb-20 pt-36 sm:pb-28 sm:pt-44">
-        <div className="aurora">
-          <span className="left-[8%] top-[-8%] h-[420px] w-[420px] animate-drift bg-primary/40" />
-          <span
-            className="right-[4%] top-[6%] h-[380px] w-[380px] animate-drift bg-accent/30"
-            style={{ animationDelay: '-7s' }}
-          />
-          <span
-            className="left-[38%] top-[34%] h-[440px] w-[440px] animate-drift bg-[hsl(var(--brand-2)/0.3)]"
-            style={{ animationDelay: '-14s' }}
-          />
-        </div>
-        <div className="dot-grid pointer-events-none absolute inset-0 opacity-50 mask-fade-b" />
+        <div className="dots-lg pointer-events-none absolute inset-0 mask-fade-b" />
 
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-3xl text-center">
             <div className="mb-7 inline-flex animate-fade-in items-center gap-2 rounded-full border border-border bg-card/70 py-1.5 pl-1.5 pr-4 text-xs backdrop-blur-md">
-              <span className="chip border-transparent bg-brand-gradient px-2 py-0.5 text-[10px] font-bold text-white">
+              <span className="chip border-transparent bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
                 New
               </span>
               <span className="text-muted-foreground">Comment reply assistant is live</span>
@@ -273,14 +224,14 @@ export default function HomePage() {
             >
               Build a social presence
               <br />
-              that <span className="gradient-text animate-gradient-pan">sounds like you</span>.
+              that <span className="text-primary">sounds like you</span>.
             </h1>
 
             <p
               className="mx-auto mt-6 max-w-xl animate-fade-in text-base leading-7 text-muted-foreground sm:text-lg"
               style={{ animationDelay: '120ms' }}
             >
-              ConnectUs drafts from real trends, queues what you approve, publishes on your
+              SocialFlow drafts from real trends, queues what you approve, publishes on your
               schedule, and reports only the engagement it can actually verify.
             </p>
 
@@ -322,72 +273,33 @@ export default function HomePage() {
             className="relative mx-auto mt-16 max-w-5xl animate-fade-in"
             style={{ animationDelay: '300ms' }}
           >
-            <div className="pointer-events-none absolute -inset-x-8 -top-6 bottom-0 rounded-[2.5rem] bg-primary/20 blur-3xl" />
-            <div className="relative">
-              <AppPreview />
-            </div>
+            <AppPreview />
 
-            {/* Floating callouts */}
-            <div className="absolute -left-4 top-1/4 hidden animate-float lg:block">
-              <div className="glass flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 shadow-lift">
-                <span className="grid h-8 w-8 place-items-center rounded-lg bg-success/15 text-success">
-                  <Check className="h-4 w-4" />
-                </span>
-                <div>
-                  <p className="text-[11px] font-bold">Draft approved</p>
-                  <p className="font-mono text-[9px] text-muted-foreground">queued for Tue 09:00</p>
-                </div>
-              </div>
-            </div>
-
-            <div
-              className="absolute -right-4 bottom-1/4 hidden animate-float lg:block"
-              style={{ animationDelay: '-3s' }}
-            >
-              <div className="glass flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 shadow-lift">
-                <span
-                  className="grid h-8 w-8 place-items-center rounded-lg text-white"
-                  style={{ backgroundColor: '#0A66C2' }}
+            {/* Signal readout. Aligned to the frame below the shot rather than
+                floating over it, so nothing ever covers the interface. */}
+            <div className="mt-3 grid overflow-hidden rounded-lg border border-border bg-card sm:grid-cols-3">
+              {[
+                { label: 'Draft approved', value: 'Queued for Tue 09:00' },
+                { label: 'Published', value: '128 posts live' },
+                { label: 'Verified engagement', value: '+184 reactions · 40s ago' },
+              ].map((signal, index) => (
+                <div
+                  key={signal.label}
+                  className={cn(
+                    'flex items-center gap-3 px-4 py-3',
+                    index > 0 && 'border-t border-border sm:border-l sm:border-t-0',
+                  )}
                 >
-                  <LinkedInMark className="h-4 w-4" />
-                </span>
-                <div>
-                  <p className="text-[11px] font-bold">+184 reactions</p>
-                  <p className="font-mono text-[9px] text-muted-foreground">verified 40s ago</p>
+                  <span className="signal-pulse h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                  <div className="min-w-0">
+                    <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
+                      {signal.label}
+                    </p>
+                    <p className="mt-0.5 truncate text-xs font-semibold">{signal.value}</p>
+                  </div>
                 </div>
-              </div>
+              ))}
             </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Marquee ─────────────────────────────────────────────────────── */}
-      <section className="border-y border-border/70 bg-muted/20 py-5">
-        <div className="mask-fade-x overflow-hidden">
-          <div className="flex w-max animate-marquee gap-10">
-            {[0, 1].map((copy) => (
-              <div key={copy} className="flex shrink-0 gap-10 pr-10" aria-hidden={copy === 1}>
-                {[
-                  'System design',
-                  'Platform engineering',
-                  'Developer tooling',
-                  'AI infrastructure',
-                  'Distributed systems',
-                  'Postgres',
-                  'Observability',
-                  'Rust',
-                  'Kubernetes',
-                ].map((topic) => (
-                  <span
-                    key={topic}
-                    className="flex items-center gap-2 whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground"
-                  >
-                    <span className="h-1 w-1 rounded-full bg-primary" />
-                    {topic}
-                  </span>
-                ))}
-              </div>
-            ))}
           </div>
         </div>
       </section>
@@ -413,16 +325,15 @@ export default function HomePage() {
                 <article
                   key={feature.title}
                   className={cn(
-                    'surface edge-light group relative overflow-hidden p-7 transition-all duration-300 ease-spring hover:-translate-y-1 hover:border-primary/30 hover:shadow-lift',
+                    'surface group relative overflow-hidden p-7 transition-colors duration-200 hover:border-foreground/25',
                     feature.span,
                   )}
                 >
-                  <div className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full bg-primary/20 opacity-0 blur-3xl transition-opacity duration-500 group-hover:opacity-100" />
-                  <span className="relative grid h-11 w-11 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary transition-transform duration-300 group-hover:scale-110">
+                  <span className="grid h-11 w-11 place-items-center rounded-md border border-border bg-muted text-foreground transition-colors duration-200 group-hover:border-primary/40 group-hover:text-primary">
                     <Icon className="h-5 w-5" />
                   </span>
-                  <h3 className="relative mt-6 text-lg font-bold tracking-tight">{feature.title}</h3>
-                  <p className="relative mt-2.5 max-w-md text-sm leading-6 text-muted-foreground">
+                  <h3 className="mt-6 text-lg font-bold tracking-tight">{feature.title}</h3>
+                  <p className="mt-2.5 max-w-md text-sm leading-6 text-muted-foreground">
                     {feature.body}
                   </p>
                 </article>
@@ -450,8 +361,7 @@ export default function HomePage() {
               return (
                 <div key={step.number} className="relative animate-fade-in" style={{ animationDelay: `${index * 90}ms` }}>
                   <div className="relative mx-auto grid h-[104px] w-[104px] place-items-center">
-                    <span className="absolute inset-0 rounded-full bg-primary/10 blur-xl" />
-                    <span className="surface relative grid h-16 w-16 place-items-center rounded-2xl text-primary shadow-lift">
+                    <span className="surface relative grid h-16 w-16 place-items-center rounded-lg bg-background text-primary">
                       <Icon className="h-6 w-6" />
                     </span>
                   </div>
@@ -506,7 +416,7 @@ export default function HomePage() {
                   {testimonial.quote}
                 </blockquote>
                 <figcaption className="mt-6 flex items-center gap-3 border-t border-border/70 pt-5">
-                  <span className="grid h-9 w-9 place-items-center rounded-full bg-brand-gradient text-xs font-bold text-white">
+                  <span className="grid h-9 w-9 place-items-center rounded-md border border-border bg-muted text-xs font-bold">
                     {testimonial.name.charAt(0)}
                   </span>
                   <span>
@@ -517,64 +427,6 @@ export default function HomePage() {
                   </span>
                 </figcaption>
               </figure>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Pricing ─────────────────────────────────────────────────────── */}
-      <section id="pricing" className="relative scroll-mt-24 overflow-hidden py-24 sm:py-32">
-        <div className="pointer-events-none absolute inset-0 bg-muted/25" />
-        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-2xl text-center">
-            <p className="dot-label mb-4 justify-center">Pricing</p>
-            <h2 className="text-3xl font-bold tracking-[-0.035em] sm:text-[44px] sm:leading-[1.08]">
-              Start free. Upgrade when the cadence sticks.
-            </h2>
-          </div>
-
-          <div className="mt-14 grid items-start gap-5 lg:grid-cols-3">
-            {pricing.map((tier) => (
-              <div
-                key={tier.name}
-                className={cn(
-                  'surface edge-light relative flex flex-col p-7 transition-all duration-300 ease-spring',
-                  tier.featured
-                    ? 'border-primary/40 shadow-glow-lg lg:-my-4 lg:py-11'
-                    : 'hover:-translate-y-1 hover:border-primary/25',
-                )}
-              >
-                {tier.featured ? (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-brand-gradient px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white shadow-soft">
-                    Most popular
-                  </span>
-                ) : null}
-
-                <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-muted-foreground">
-                  {tier.name}
-                </h3>
-                <div className="mt-4 flex items-baseline gap-2">
-                  <span className="text-4xl font-bold tracking-[-0.04em]">{tier.price}</span>
-                  <span className="font-mono text-[11px] text-muted-foreground">{tier.cadence}</span>
-                </div>
-                <p className="mt-3 text-sm leading-6 text-muted-foreground">{tier.description}</p>
-
-                <ul className="mt-7 flex-1 space-y-3">
-                  {tier.features.map((item) => (
-                    <li key={item} className="flex items-start gap-2.5 text-sm">
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" />
-                      <span className="text-muted-foreground">{item}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                <Link
-                  href="/register"
-                  className={cn('mt-8 h-11 w-full', tier.featured ? 'btn-primary' : 'btn-secondary')}
-                >
-                  {tier.cta}
-                </Link>
-              </div>
             ))}
           </div>
         </div>
@@ -614,39 +466,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── CTA ─────────────────────────────────────────────────────────── */}
-      <section className="px-4 pb-24 sm:px-6 lg:px-8">
-        <div className="relative mx-auto max-w-6xl overflow-hidden rounded-3xl border border-border bg-card p-10 text-center shadow-pop sm:p-16">
-          <div className="aurora">
-            <span className="left-[10%] top-[-30%] h-[320px] w-[320px] animate-drift bg-primary/45" />
-            <span
-              className="right-[8%] top-[10%] h-[300px] w-[300px] animate-drift bg-accent/35"
-              style={{ animationDelay: '-9s' }}
-            />
-          </div>
-          <div className="dot-grid pointer-events-none absolute inset-0 opacity-40" />
-
-          <div className="relative">
-            <Logo className="mx-auto h-12 w-12" gradientId="cta-mark" />
-            <h2 className="mx-auto mt-7 max-w-2xl text-3xl font-bold tracking-[-0.035em] sm:text-5xl sm:leading-[1.05]">
-              Your next post is already half-written.
-            </h2>
-            <p className="mx-auto mt-5 max-w-lg text-base leading-7 text-muted-foreground">
-              Connect an account, tune your voice, and approve the first draft in under three minutes.
-            </p>
-            <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <Link href="/register" className="btn-primary h-12 w-full px-7 text-[15px] sm:w-auto">
-                Create your workspace
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-              <Link href="/login" className="btn-secondary h-12 w-full px-7 text-[15px] sm:w-auto">
-                Sign in
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* ── Footer ──────────────────────────────────────────────────────── */}
       <footer className="border-t border-border/70 py-12">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-6 px-4 sm:px-6 lg:flex-row lg:px-8">
@@ -654,7 +473,7 @@ export default function HomePage() {
             <Logo gradientId="footer-mark" />
             <div>
               <p className="text-sm font-bold tracking-[-0.02em]">
-                Connect<span className="gradient-text">Us</span>
+                Social<span className="gradient-text">Flow</span>
               </p>
               <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
                 Social OS
@@ -686,7 +505,7 @@ export default function HomePage() {
           </div>
         </div>
         <p className="mt-8 text-center font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-          © {new Date().getFullYear()} ConnectUs · Human-controlled publishing
+          © {new Date().getFullYear()} SocialFlow · Human-controlled publishing
         </p>
       </footer>
     </div>

@@ -19,7 +19,7 @@ const lengthGuide: Record<string, string> = {
 };
 
 export async function POST(req: NextRequest) {
-  const authUser = getAuthUser(req);
+  const authUser = await getAuthUser(req);
   if (!authUser) return unauthorizedResponse();
 
   const body = await req.json();
