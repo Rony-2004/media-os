@@ -45,6 +45,24 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.56.0
         version: 5.101.4(react@19.2.0)
+      '@types/bcryptjs':
+        specifier: ^2.4.6
+        version: 2.4.6
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.15.3
+      '@types/nodemailer':
+        specifier: ^6.4.16
+        version: 6.4.24
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.2
+      '@types/react-dom':
+        specifier: ^19.0.0
+        version: 19.2.2(@types/react@19.2.2)
+      autoprefixer:
+        specifier: ^10.4.20
+        version: 10.5.4(postcss@8.5.25)
       bcryptjs:
         specifier: ^2.4.3
         version: 2.4.3
@@ -69,6 +87,9 @@ importers:
       nodemailer:
         specifier: ^6.9.0
         version: 6.10.1
+      postcss:
+        specifier: ^8.4.45
+        version: 8.5.25
       prisma:
         specifier: ^6.9.0
         version: 6.9.0(typescript@5.9.2)
@@ -81,37 +102,15 @@ importers:
       tailwind-merge:
         specifier: ^2.5.0
         version: 2.6.1
-      zod:
-        specifier: ^4.4.3
-        version: 4.4.3
-    devDependencies:
-      '@types/bcryptjs':
-        specifier: ^2.4.6
-        version: 2.4.6
-      '@types/node':
-        specifier: ^22.0.0
-        version: 22.15.3
-      '@types/nodemailer':
-        specifier: ^6.4.16
-        version: 6.4.24
-      '@types/react':
-        specifier: ^19.0.0
-        version: 19.2.2
-      '@types/react-dom':
-        specifier: ^19.0.0
-        version: 19.2.2(@types/react@19.2.2)
-      autoprefixer:
-        specifier: ^10.4.20
-        version: 10.5.4(postcss@8.5.25)
-      postcss:
-        specifier: ^8.4.45
-        version: 8.5.25
       tailwindcss:
         specifier: ^3.4.0
         version: 3.4.19(tsx@4.23.1)
       typescript:
         specifier: ^5.9.2
         version: 5.9.2
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   packages/database:
     dependencies:
