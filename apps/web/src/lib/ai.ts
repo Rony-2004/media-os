@@ -1,11 +1,12 @@
 /**
- * AI Provider — supports Google Gemini API & Anthropic.
+ * AI Provider — supports Azure OpenAI, OpenRouter, Gemini, and Anthropic.
  * Primary model: gemini-3.6-flash
  */
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_OPENROUTER_MODEL = 'openrouter/auto';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+const DEFAULT_AZURE_OPENAI_API_VERSION = '2024-02-15-preview';
 
 export function getModel(): string {
   if (hasUsableKey(process.env.OPENROUTER_API_KEY)) {
@@ -31,6 +32,10 @@ function hasUsableKey(key: string | undefined): key is string {
   return Boolean(key && !key.includes('your-key'));
 }
 
+function normalizeAzureEndpoint(endpoint: string): string {
+  return endpoint.replace(/\/+$/, '');
+}
+
 export interface AIMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -47,11 +52,59 @@ export interface AICallOptions {
  * Call the configured AI providers and return their text response.
  */
 export async function callAI(options: AICallOptions): Promise<string> {
+  const azureEndpoint = process.env.AZURE_OPENAI_ENDPOINT;
+  const azureApiKey = process.env.AZURE_OPENAI_API_KEY;
+  const azureDeployment = process.env.AZURE_OPENAI_DEPLOYMENT;
+  const azureApiVersion = process.env.AZURE_OPENAI_API_VERSION || DEFAULT_AZURE_OPENAI_API_VERSION;
+
   const openRouterKey = process.env.OPENROUTER_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
 
-  // 1. Use OpenRouter as the primary provider when configured.
+  // 1. Use Azure OpenAI as the primary provider when configured.
+  if (
+    hasUsableKey(azureApiKey) &&
+    hasUsableKey(azureEndpoint) &&
+    hasUsableKey(azureDeployment)
+  ) {
+    try {
+      const url = `${normalizeAzureEndpoint(azureEndpoint)}/openai/deployments/${azureDeployment}/chat/completions?api-version=${azureApiVersion}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'api-key': azureApiKey,
+        },
+        body: JSON.stringify({
+          messages: [
+            ...(options.system ? [{ role: 'system' as const, content: options.system }] : []),
+            ...options.messages,
+          ],
+          max_tokens: options.maxTokens ?? 1024,
+          temperature: options.temperature ?? 0.7,
+        }),
+      });
+
+      if (res.ok) {
+        const data = (await res.json()) as {
+          choices?: Array<{ message?: { content?: string } }>;
+        };
+        const text = data.choices?.[0]?.message?.content;
+        if (text) return text.trim();
+      } else {
+        const errorBody = (await res.json().catch(() => null)) as
+          | {
+              error?: { message?: string };
+            }
+          | null;
+        console.warn(`[Azure OpenAI API ${res.status}]: ${errorBody?.error?.message || res.statusText}`);
+      }
+    } catch (error: unknown) {
+      console.warn('[Azure OpenAI Warning]:', error instanceof Error ? error.message : 'Request failed');
+    }
+  }
+
+  // 2. Use OpenRouter when configured.
   if (hasUsableKey(openRouterKey)) {
     try {
       const res = await fetch(OPENROUTER_API_URL, {
@@ -90,7 +143,7 @@ export async function callAI(options: AICallOptions): Promise<string> {
     }
   }
 
-  // 2. Try Gemini API if GEMINI_API_KEY is provided.
+  // 3. Try Gemini API if GEMINI_API_KEY is provided.
   if (geminiKey && !geminiKey.includes('your-key')) {
     try {
       const model = getGeminiModel();
@@ -125,7 +178,7 @@ export async function callAI(options: AICallOptions): Promise<string> {
     }
   }
 
-  // 3. Try Anthropic if ANTHROPIC_API_KEY is available
+  // 4. Try Anthropic if ANTHROPIC_API_KEY is available
   if (anthropicKey && !anthropicKey.includes('your-key')) {
     try {
       const res = await fetch('https://api.anthropic.com/v1/messages', {

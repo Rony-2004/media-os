@@ -8,7 +8,7 @@
     "db:push": "prisma db push",
     "db:seed": "tsx src/seed.ts",
     "seed:user": "tsx src/seed-user.ts",
-    "build": "tsx src/index.ts"
+    "build": "node -e \"console.log('database package: no build step')\""
   },
   "dependencies": {
     "@prisma/client": "6.9.0",
