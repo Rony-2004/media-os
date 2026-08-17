@@ -1,32 +1,31 @@
-import { sendEmail } from '@better-auth/infra';
+import { Resend } from 'resend';
 
 export type AuthOTPType = 'sign-in' | 'email-verification' | 'forget-password' | 'change-email';
 
-const otpVariables = (email: string, otp: string) => ({
-  otpCode: otp,
-  userEmail: email,
-  appName: 'AI Social OS',
-  expirationMinutes: '10',
-});
+const subjectByType: Record<AuthOTPType, string> = {
+  'sign-in': 'Your sign-in code - AI Social OS',
+  'email-verification': 'Verify your email - AI Social OS',
+  'forget-password': 'Reset your password - AI Social OS',
+  'change-email': 'Confirm your email change - AI Social OS',
+};
 
 export async function sendAuthOTPEmail(email: string, otp: string, type: AuthOTPType) {
-  const variables = otpVariables(email, otp);
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.RESEND_FROM;
 
-  let result;
-  switch (type) {
-    case 'sign-in':
-      result = await sendEmail({ template: 'sign-in-otp', to: email, variables });
-      break;
-    case 'email-verification':
-    case 'change-email':
-      result = await sendEmail({ template: 'verify-email-otp', to: email, variables });
-      break;
-    case 'forget-password':
-      result = await sendEmail({ template: 'reset-password-otp', to: email, variables });
-      break;
+  if (!apiKey || !from) {
+    throw new Error('RESEND_API_KEY and RESEND_FROM must be configured to send OTP emails');
   }
 
-  if (!result.success) {
-    throw new Error(result.error || 'Better Auth Infrastructure could not send the OTP email');
+  const { error } = await new Resend(apiKey).emails.send({
+    from,
+    to: email,
+    subject: subjectByType[type],
+    text: `Your verification code is: ${otp}\n\nThis code expires in 10 minutes.`,
+    html: `<p>Your verification code is: <strong>${otp}</strong></p><p>This code expires in 10 minutes.</p>`,
+  });
+
+  if (error) {
+    throw new Error(error.message || 'Resend could not send the OTP email');
   }
 }
