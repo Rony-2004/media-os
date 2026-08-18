@@ -278,74 +278,250 @@ function element(
   return createElement(type, { style, key }, children);
 }
 
-/**
- * Renders a simple, editorial LinkedIn infographic with Next's embedded Noto
- * font. Unlike Sharp/libvips SVG text, this does not depend on fonts installed
- * in the Vercel function runtime.
- */
-export async function renderLinkedInCardPng(plan: TopicCardDesign): Promise<Uint8Array> {
-  const nodes = plan.nodes.slice(0, 5);
-  const flow = nodes.flatMap((label, index) => {
-    const step = element(
-      'div',
-      {
-        display: 'flex',
-        alignItems: 'center',
-        width: '100%',
-        height: 54,
-        padding: '0 18px',
-        border: `2px solid ${INK}`,
-        borderRadius: 14,
-        backgroundColor: index === nodes.length - 1 ? SIGNAL : '#FFFFFF',
-        color: index === nodes.length - 1 ? '#FFFFFF' : INK,
-        fontSize: 20,
-        fontWeight: 700,
-      },
-      [
-        element(
-          'div',
-          {
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 30,
-            height: 30,
-            marginRight: 14,
-            borderRadius: 15,
-            backgroundColor: index === nodes.length - 1 ? '#FFFFFF' : INK,
-            color: index === nodes.length - 1 ? SIGNAL : '#FFFFFF',
-            fontSize: 17,
-            fontWeight: 700,
-          },
-          index + 1,
-          `number-${index}`,
-        ),
-        element('div', { display: 'flex' }, label, `label-${index}`),
-      ],
-      `step-${index}`,
-    );
+type CardTheme = {
+  background: string;
+  panel: string;
+  node: string;
+  text: string;
+  muted: string;
+  line: string;
+  accent: string;
+  dark: boolean;
+};
 
-    if (index === nodes.length - 1) return [step];
+function cardTheme(plan: TopicCardDesign): CardTheme {
+  const seed = hashString(`${plan.headline}|${plan.caption}`);
+  const dark = seed % 2 === 1;
+  const accents = dark
+    ? ['#E31B72', '#7C5CFC', '#00B8A9', '#FF8A3D']
+    : ['#357A68', '#557A3E', '#B86A38', '#4169A1'];
 
+  return dark
+    ? {
+        background: '#151515',
+        panel: '#1D1D1D',
+        node: '#242424',
+        text: '#F7F5F1',
+        muted: '#B9B6B0',
+        line: '#F7F5F1',
+        accent: accents[seed % accents.length],
+        dark,
+      }
+    : {
+        background: '#FAFAF7',
+        panel: '#EAF2DF',
+        node: '#E2F3EE',
+        text: '#183129',
+        muted: '#65726B',
+        line: '#708276',
+        accent: accents[seed % accents.length],
+        dark,
+      };
+}
+
+function architectureNode(
+  label: string,
+  theme: CardTheme,
+  style: CSSProperties,
+  key: string,
+): ReactElement {
+  return element(
+    'div',
+    {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: 62,
+      padding: '10px 18px',
+      border: `2px solid ${theme.accent}`,
+      borderRadius: 14,
+      backgroundColor: theme.node,
+      color: theme.text,
+      fontSize: 19,
+      fontWeight: 700,
+      textAlign: 'center',
+      ...style,
+    },
+    label,
+    key,
+  );
+}
+
+function flowDiagram(nodes: string[], theme: CardTheme): ReactElement {
+  const children = nodes.flatMap((label, index) => {
+    const node = architectureNode(label, theme, { width: 175 }, `flow-node-${index}`);
+    if (index === nodes.length - 1) return [node];
     return [
-      step,
+      node,
       element(
         'div',
         {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          height: 12,
-          color: SIGNAL,
-          fontSize: 22,
+          width: 38,
+          color: theme.accent,
+          fontSize: 28,
           fontWeight: 700,
         },
-        '↓',
-        `arrow-${index}`,
+        '→',
+        `flow-arrow-${index}`,
       ),
     ];
   });
 
+  return element(
+    'div',
+    {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: '100%',
+      height: '100%',
+      padding: '38px 30px',
+    },
+    children,
+    'flow-diagram',
+  );
+}
+
+function layersDiagram(nodes: string[], theme: CardTheme): ReactElement {
+  return element(
+    'div',
+    {
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: '100%',
+      height: '100%',
+      padding: '22px 130px',
+    },
+    nodes.map((label, index) =>
+      architectureNode(
+        label,
+        theme,
+        {
+          width: `${72 + index * 5}%`,
+          minHeight: 48,
+          marginTop: index === 0 ? 0 : 8,
+          backgroundColor: index === nodes.length - 1 ? theme.accent : theme.node,
+          color: index === nodes.length - 1 ? '#FFFFFF' : theme.text,
+        },
+        `layer-${index}`,
+      ),
+    ),
+    'layers-diagram',
+  );
+}
+
+function connectedDiagram(
+  nodes: string[],
+  theme: CardTheme,
+  cycle: boolean,
+): ReactElement {
+  const networkPositions = [
+    [35, 35],
+    [35, 205],
+    [440, 120],
+    [845, 35],
+    [845, 205],
+  ];
+  const cyclePositions = [
+    [80, 115],
+    [305, 30],
+    [715, 30],
+    [895, 180],
+    [505, 220],
+  ];
+  const positions = cycle ? cyclePositions : networkPositions;
+  const centers = positions.slice(0, nodes.length).map(([x, y]) => [x + 95, y + 31]);
+  const lines = cycle
+    ? centers.map((from, index) => {
+        const to = centers[(index + 1) % centers.length];
+        return createElement('line', {
+          key: `cycle-line-${index}`,
+          x1: from[0],
+          y1: from[1],
+          x2: to[0],
+          y2: to[1],
+          stroke: theme.accent,
+          strokeWidth: 3,
+        });
+      })
+    : centers.slice(1).map((to, index) =>
+        createElement('line', {
+          key: `network-line-${index}`,
+          x1: centers[0][0],
+          y1: centers[0][1],
+          x2: to[0],
+          y2: to[1],
+          stroke: theme.line,
+          strokeWidth: 3,
+          opacity: 0.72,
+        }),
+      );
+
+  const connector = createElement(
+    'svg',
+    {
+      key: 'connectors',
+      width: '100%',
+      height: '100%',
+      viewBox: '0 0 1080 310',
+      style: { position: 'absolute', inset: 0 },
+    },
+    lines,
+  );
+
+  return element(
+    'div',
+    {
+      display: 'flex',
+      position: 'relative',
+      width: '100%',
+      height: '100%',
+    },
+    [
+      connector,
+      ...nodes.map((label, index) =>
+        architectureNode(
+          label,
+          theme,
+          {
+            position: 'absolute',
+            left: positions[index][0],
+            top: positions[index][1],
+            width: 190,
+          },
+          `connected-node-${index}`,
+        ),
+      ),
+    ],
+    cycle ? 'cycle-diagram' : 'network-diagram',
+  );
+}
+
+function renderArchitecture(plan: TopicCardDesign, theme: CardTheme): ReactElement {
+  const nodes = plan.nodes.slice(0, 5);
+  switch (plan.diagram) {
+    case 'layers':
+      return layersDiagram(nodes, theme);
+    case 'network':
+      return connectedDiagram(nodes, theme, false);
+    case 'cycle':
+      return connectedDiagram(nodes, theme, true);
+    case 'flow':
+      return flowDiagram(nodes, theme);
+  }
+}
+
+/**
+ * Renders varied architecture visuals with Next's embedded Noto font, so the
+ * result stays readable without fonts installed in the Vercel runtime.
+ */
+export async function renderLinkedInCardPng(plan: TopicCardDesign): Promise<Uint8Array> {
+  const theme = cardTheme(plan);
   const card = element(
     'div',
     {
@@ -353,9 +529,9 @@ export async function renderLinkedInCardPng(plan: TopicCardDesign): Promise<Uint
       flexDirection: 'column',
       width: '100%',
       height: '100%',
-      padding: '54px 64px 46px',
-      backgroundColor: PAPER,
-      color: INK,
+      padding: '34px 48px 30px',
+      backgroundColor: theme.background,
+      color: theme.text,
       fontFamily: 'sans-serif',
     },
     [
@@ -364,91 +540,84 @@ export async function renderLinkedInCardPng(plan: TopicCardDesign): Promise<Uint
         {
           display: 'flex',
           alignItems: 'center',
-          color: SIGNAL,
-          fontSize: 18,
-          fontWeight: 700,
-          letterSpacing: 3,
-        },
-        plan.eyebrow.toUpperCase(),
-        'eyebrow',
-      ),
-      element(
-        'div',
-        {
-          display: 'flex',
-          flex: 1,
-          alignItems: 'center',
-          marginTop: 28,
-          marginBottom: 30,
+          justifyContent: 'space-between',
         },
         [
           element(
             'div',
             {
               display: 'flex',
-              flexDirection: 'column',
-              width: '55%',
-              paddingRight: 64,
+              color: theme.accent,
+              fontSize: 15,
+              fontWeight: 700,
+              letterSpacing: 3,
             },
-            [
-              element(
-                'div',
-                {
-                  display: 'flex',
-                  fontSize: 55,
-                  fontWeight: 700,
-                  lineHeight: 1.08,
-                  letterSpacing: -2,
-                },
-                plan.headline,
-                'headline',
-              ),
-              element(
-                'div',
-                {
-                  display: 'flex',
-                  width: 76,
-                  height: 7,
-                  marginTop: 30,
-                  backgroundColor: SIGNAL,
-                  borderRadius: 4,
-                },
-                '',
-                'accent',
-              ),
-            ],
-            'copy',
+            plan.eyebrow.toUpperCase(),
+            'eyebrow',
           ),
           element(
             'div',
             {
               display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              width: '45%',
-              padding: 16,
-              borderRadius: 22,
-              backgroundColor: '#E9E5DE',
+              padding: '7px 12px',
+              border: `1px solid ${theme.line}`,
+              borderRadius: 20,
+              color: theme.muted,
+              fontSize: 13,
+              letterSpacing: 2,
             },
-            flow,
-            'flow',
+            plan.diagram.toUpperCase(),
+            'diagram-label',
           ),
         ],
-        'body',
+        'topline',
+      ),
+      element(
+        'div',
+        {
+          display: 'flex',
+          marginTop: 10,
+          fontSize: 39,
+          fontWeight: 700,
+          lineHeight: 1.08,
+          letterSpacing: -1.2,
+        },
+        plan.headline,
+        'headline',
+      ),
+      element(
+        'div',
+        {
+          display: 'flex',
+          position: 'relative',
+          width: '100%',
+          height: 320,
+          marginTop: 18,
+          overflow: 'hidden',
+          border: `2px solid ${theme.dark ? '#44413E' : '#9EB48E'}`,
+          borderRadius: 24,
+          backgroundColor: theme.panel,
+        },
+        renderArchitecture(plan, theme),
+        'diagram',
       ),
       element(
         'div',
         {
           display: 'flex',
           alignItems: 'center',
-          paddingTop: 20,
-          borderTop: `2px solid ${INK}`,
-          fontSize: 20,
+          marginTop: 16,
+          fontSize: 18,
           fontWeight: 600,
         },
         [
-          element('div', { display: 'flex', color: SIGNAL, marginRight: 12 }, 'TAKEAWAY', 'takeaway'),
-          element('div', { display: 'flex' }, plan.caption, 'caption'),
+          element(
+            'div',
+            { display: 'flex', color: theme.accent, marginRight: 12, fontWeight: 700 },
+            'WHY IT MATTERS',
+            'takeaway',
+          ),
+          element('div', { display: 'flex', color: theme.muted }, plan.caption, 'caption'),
         ],
         'footer',
       ),
@@ -470,7 +639,7 @@ export async function generateClaudePostImage(
   const generate = dependencies.generate ?? callClaude;
   const raw = await generate({
     system:
-      'You are a senior LinkedIn information designer. Return only valid JSON for one clean, useful professional infographic. Never return markdown or SVG.',
+      'You are a senior LinkedIn information designer. Design a real architecture visual, not a generic numbered list. Return only valid JSON. Never return markdown or SVG.',
     messages: [
       {
         role: 'user',
@@ -485,10 +654,12 @@ Return exactly one JSON object:
 {
   "eyebrow": "2-4 word technical label, max 28 characters",
   "headline": "the post's central technical insight, max 64 characters",
-  "diagram": "flow|layers|network|cycle",
-  "nodes": ["3 to 5 short architecture labels, each max 18 characters"],
+  "diagram": "flow for pipelines | layers for stacks | network for communicating services | cycle for feedback loops",
+  "nodes": ["3 to 5 concrete components from this post, each max 18 characters"],
   "caption": "concise takeaway, max 56 characters"
-}`,
+}
+
+Choose the diagram that best explains the specific mechanics. Use component names, services, stores, decisions, or stages—not vague concepts.`,
       },
     ],
     maxTokens: 350,
