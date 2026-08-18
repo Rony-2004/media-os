@@ -19,12 +19,24 @@ const INK = '#0B0A0A';
 const PAPER = '#F5F3EF';
 const SIGNAL = '#ED2C35';
 
+function limitedText(maxLength: number) {
+  return z
+    .string()
+    .trim()
+    .min(1)
+    .transform((value) =>
+      value.length <= maxLength
+        ? value
+        : `${value.slice(0, maxLength - 1).trimEnd()}…`,
+    );
+}
+
 export const topicCardDesignSchema = z.object({
-  eyebrow: z.string().trim().min(1).max(28),
-  headline: z.string().trim().min(1).max(64),
+  eyebrow: limitedText(28),
+  headline: limitedText(64),
   diagram: z.enum(['flow', 'layers', 'network', 'cycle']),
-  nodes: z.array(z.string().trim().min(1).max(18)).min(3).max(5),
-  caption: z.string().trim().min(1).max(56),
+  nodes: z.array(limitedText(18)).min(3).transform((nodes) => nodes.slice(0, 5)),
+  caption: limitedText(56),
 });
 
 export type TopicCardDesign = z.infer<typeof topicCardDesignSchema>;
