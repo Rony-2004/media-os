@@ -1,0 +1,31 @@
+name: Publish scheduled posts
+
+on:
+  schedule:
+    - cron: "13,43 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: publish-scheduled-posts
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Trigger the protected publishing endpoint
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          test -n "$APP_URL" || { echo "APP_URL secret is missing"; exit 1; }
+          test -n "$CRON_SECRET" || { echo "CRON_SECRET secret is missing"; exit 1; }
+          curl --fail --show-error --silent \
+            --max-time 90 \
+            --retry 2 \
+            --retry-all-errors \
+            --header "Authorization: Bearer $CRON_SECRET" \
+            "${APP_URL%/}/api/cron/publish-due"
