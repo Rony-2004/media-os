@@ -1,5 +1,7 @@
 import { matchTopicImage } from '@/lib/topic-image';
 import { callClaude, type AICallOptions } from '@/lib/ai';
+import { ImageResponse } from 'next/og';
+import { createElement, type CSSProperties, type ReactElement } from 'react';
 import { z } from 'zod';
 
 /**
@@ -267,10 +269,194 @@ export function buildTopicCard(trend: string, category: string): string {
   return `data:image/svg+xml;utf8,${encodeURIComponent(buildTopicCardSvg(trend, category))}`;
 }
 
-async function rasterizeSvg(svg: string): Promise<Uint8Array> {
-  const { default: sharp } = await import('sharp');
-  const png = await sharp(Buffer.from(svg)).png().toBuffer();
-  return new Uint8Array(png);
+function element(
+  type: string,
+  style: CSSProperties,
+  children: ReactElement | ReactElement[] | string | number,
+  key?: string,
+): ReactElement {
+  return createElement(type, { style, key }, children);
+}
+
+/**
+ * Renders a simple, editorial LinkedIn infographic with Next's embedded Noto
+ * font. Unlike Sharp/libvips SVG text, this does not depend on fonts installed
+ * in the Vercel function runtime.
+ */
+export async function renderLinkedInCardPng(plan: TopicCardDesign): Promise<Uint8Array> {
+  const nodes = plan.nodes.slice(0, 5);
+  const flow = nodes.flatMap((label, index) => {
+    const step = element(
+      'div',
+      {
+        display: 'flex',
+        alignItems: 'center',
+        width: '100%',
+        height: 54,
+        padding: '0 18px',
+        border: `2px solid ${INK}`,
+        borderRadius: 14,
+        backgroundColor: index === nodes.length - 1 ? SIGNAL : '#FFFFFF',
+        color: index === nodes.length - 1 ? '#FFFFFF' : INK,
+        fontSize: 20,
+        fontWeight: 700,
+      },
+      [
+        element(
+          'div',
+          {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 30,
+            height: 30,
+            marginRight: 14,
+            borderRadius: 15,
+            backgroundColor: index === nodes.length - 1 ? '#FFFFFF' : INK,
+            color: index === nodes.length - 1 ? SIGNAL : '#FFFFFF',
+            fontSize: 17,
+            fontWeight: 700,
+          },
+          index + 1,
+          `number-${index}`,
+        ),
+        element('div', { display: 'flex' }, label, `label-${index}`),
+      ],
+      `step-${index}`,
+    );
+
+    if (index === nodes.length - 1) return [step];
+
+    return [
+      step,
+      element(
+        'div',
+        {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: 12,
+          color: SIGNAL,
+          fontSize: 22,
+          fontWeight: 700,
+        },
+        '↓',
+        `arrow-${index}`,
+      ),
+    ];
+  });
+
+  const card = element(
+    'div',
+    {
+      display: 'flex',
+      flexDirection: 'column',
+      width: '100%',
+      height: '100%',
+      padding: '54px 64px 46px',
+      backgroundColor: PAPER,
+      color: INK,
+      fontFamily: 'sans-serif',
+    },
+    [
+      element(
+        'div',
+        {
+          display: 'flex',
+          alignItems: 'center',
+          color: SIGNAL,
+          fontSize: 18,
+          fontWeight: 700,
+          letterSpacing: 3,
+        },
+        plan.eyebrow.toUpperCase(),
+        'eyebrow',
+      ),
+      element(
+        'div',
+        {
+          display: 'flex',
+          flex: 1,
+          alignItems: 'center',
+          marginTop: 28,
+          marginBottom: 30,
+        },
+        [
+          element(
+            'div',
+            {
+              display: 'flex',
+              flexDirection: 'column',
+              width: '55%',
+              paddingRight: 64,
+            },
+            [
+              element(
+                'div',
+                {
+                  display: 'flex',
+                  fontSize: 55,
+                  fontWeight: 700,
+                  lineHeight: 1.08,
+                  letterSpacing: -2,
+                },
+                plan.headline,
+                'headline',
+              ),
+              element(
+                'div',
+                {
+                  display: 'flex',
+                  width: 76,
+                  height: 7,
+                  marginTop: 30,
+                  backgroundColor: SIGNAL,
+                  borderRadius: 4,
+                },
+                '',
+                'accent',
+              ),
+            ],
+            'copy',
+          ),
+          element(
+            'div',
+            {
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              width: '45%',
+              padding: 16,
+              borderRadius: 22,
+              backgroundColor: '#E9E5DE',
+            },
+            flow,
+            'flow',
+          ),
+        ],
+        'body',
+      ),
+      element(
+        'div',
+        {
+          display: 'flex',
+          alignItems: 'center',
+          paddingTop: 20,
+          borderTop: `2px solid ${INK}`,
+          fontSize: 20,
+          fontWeight: 600,
+        },
+        [
+          element('div', { display: 'flex', color: SIGNAL, marginRight: 12 }, 'TAKEAWAY', 'takeaway'),
+          element('div', { display: 'flex' }, plan.caption, 'caption'),
+        ],
+        'footer',
+      ),
+    ],
+  );
+
+  const response = new ImageResponse(card, { width: WIDTH, height: HEIGHT });
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 /**
@@ -282,10 +468,9 @@ export async function generateClaudePostImage(
   dependencies: ImageGenerationDependencies = {},
 ): Promise<string> {
   const generate = dependencies.generate ?? callClaude;
-  const rasterize = dependencies.rasterize ?? rasterizeSvg;
   const raw = await generate({
     system:
-      'You are a senior information designer. Return only valid JSON for a clean, technical system-design diagram. Never return markdown or SVG.',
+      'You are a senior LinkedIn information designer. Return only valid JSON for one clean, useful professional infographic. Never return markdown or SVG.',
     messages: [
       {
         role: 'user',
@@ -312,6 +497,8 @@ Return exactly one JSON object:
 
   const cleaned = raw.replace(/```(?:json)?|```/gi, '').trim();
   const plan = topicCardDesignSchema.parse(JSON.parse(cleaned));
-  const png = await rasterize(buildTopicCardSvg(input.trend, input.category, plan));
+  const png = dependencies.rasterize
+    ? await dependencies.rasterize(buildTopicCardSvg(input.trend, input.category, plan))
+    : await renderLinkedInCardPng(plan);
   return `data:image/png;base64,${Buffer.from(png).toString('base64')}`;
 }
