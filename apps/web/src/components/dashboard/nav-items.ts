@@ -1,12 +1,8 @@
 import {
-  BarChart3,
-  Bot,
-  CalendarDays,
   FileText,
   Gauge,
   LayoutDashboard,
   Link2,
-  MessageSquareText,
   Settings,
   ShieldAlert,
   SlidersHorizontal,
@@ -32,11 +28,7 @@ export type NavItem = {
 
 export const primaryItems: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, locked: false, matchPath: '/dashboard' },
-  { label: 'Posts', href: '/platform/linkedin?tab=published', icon: FileText, locked: true, matchPath: '/platform/linkedin', matchTab: 'published' },
-  { label: 'Drafts', href: '/platform/linkedin?tab=drafts', icon: MessageSquareText, locked: true, matchPath: '/platform/linkedin', matchTab: 'drafts' },
-  { label: 'Calendar', href: '/platform/linkedin?tab=scheduled', icon: CalendarDays, locked: true, matchPath: '/platform/linkedin', matchTab: 'scheduled' },
-  { label: 'Analytics', href: '/dashboard#analytics', icon: BarChart3, locked: true },
-  { label: 'AI Writer', href: '/platform/linkedin?tab=suggestions', icon: Bot, locked: true, matchPath: '/platform/linkedin', matchTab: 'suggestions' },
+  { label: 'Posts', href: '/platform/linkedin', icon: FileText, locked: true, matchPath: '/platform/linkedin' },
   { label: 'Brand Voice', href: '/ai-settings', icon: SlidersHorizontal, locked: true, matchPath: '/ai-settings' },
 ];
 
