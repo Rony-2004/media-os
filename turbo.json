@@ -27,7 +27,9 @@
     "OPENROUTER_MODEL",
     "AI_MODEL",
     "GEMINI_API_KEY",
-    "ANTHROPIC_API_KEY"
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_MODEL",
+    "CRON_SECRET"
   ],
   "tasks": {
     "build": {
@@ -60,7 +62,9 @@
         "OPENROUTER_MODEL",
         "AI_MODEL",
         "GEMINI_API_KEY",
-        "ANTHROPIC_API_KEY"
+        "ANTHROPIC_API_KEY",
+        "ANTHROPIC_MODEL",
+        "CRON_SECRET"
       ]
     },
     "lint": {

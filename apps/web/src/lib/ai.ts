@@ -1,14 +1,27 @@
 /**
- * AI Provider — supports Azure OpenAI, OpenRouter, Gemini, and Anthropic.
- * Primary model: gemini-3.6-flash
+ * AI Provider — supports Anthropic, Azure OpenAI, OpenRouter, and Gemini.
+ * Primary model: Claude Sonnet 5 when Anthropic is configured.
  */
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_OPENROUTER_MODEL = 'openrouter/auto';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 const DEFAULT_AZURE_OPENAI_API_VERSION = '2024-02-15-preview';
+const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-5';
+const ANTHROPIC_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+
+type AnthropicEffort = (typeof ANTHROPIC_EFFORTS)[number];
+
+function getAnthropicEffort(): AnthropicEffort | null {
+  const configured = process.env.ANTHROPIC_REASONING_EFFORT?.trim().toLowerCase();
+  return ANTHROPIC_EFFORTS.find((effort) => effort === configured) ?? null;
+}
 
 export function getModel(): string {
+  if (hasUsableKey(process.env.ANTHROPIC_API_KEY)) {
+    return process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_ANTHROPIC_MODEL;
+  }
+
   if (hasUsableKey(process.env.OPENROUTER_API_KEY)) {
     return process.env.OPENROUTER_MODEL?.trim() || DEFAULT_OPENROUTER_MODEL;
   }
@@ -48,6 +61,57 @@ export interface AICallOptions {
   temperature?: number;
 }
 
+async function requestClaude(
+  options: AICallOptions,
+  apiKey: string,
+  model: string,
+): Promise<string> {
+  const effort = getAnthropicEffort();
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: options.maxTokens ?? 1024,
+      messages: options.messages,
+      system: options.system,
+      ...(effort ? { output_config: { effort } } : {}),
+    }),
+  });
+
+  if (!res.ok) {
+    const errorBody = (await res.json().catch(() => null)) as
+      | { error?: { message?: string } }
+      | null;
+    throw new Error(errorBody?.error?.message || `Anthropic API error (${res.status})`);
+  }
+
+  const data = (await res.json()) as {
+    content?: Array<{ type?: string; text?: string }>;
+  };
+  const text = data.content?.find((block) => block.type === 'text')?.text;
+  if (!text?.trim()) throw new Error('Anthropic returned an empty response.');
+  return text.trim();
+}
+
+/**
+ * Calls Anthropic directly and never falls back to another provider.
+ * Image-design generation uses this path so its AI provenance is always Claude.
+ */
+export async function callClaude(options: AICallOptions): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!hasUsableKey(apiKey)) {
+    throw new Error('ANTHROPIC_API_KEY is required for Claude image generation.');
+  }
+
+  const model = process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_ANTHROPIC_MODEL;
+  return requestClaude(options, apiKey, model);
+}
+
 /**
  * Call the configured AI providers and return their text response.
  */
@@ -60,8 +124,18 @@ export async function callAI(options: AICallOptions): Promise<string> {
   const openRouterKey = process.env.OPENROUTER_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const anthropicModel = process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_ANTHROPIC_MODEL;
 
-  // 1. Use Azure OpenAI as the primary provider when configured.
+  // 1. Use Anthropic Claude as the primary provider when configured.
+  if (hasUsableKey(anthropicKey)) {
+    try {
+      return await requestClaude(options, anthropicKey, anthropicModel);
+    } catch (error: unknown) {
+      console.warn('[Anthropic Warning]:', error instanceof Error ? error.message : 'Request failed');
+    }
+  }
+
+  // 2. Use Azure OpenAI when configured.
   if (
     hasUsableKey(azureApiKey) &&
     hasUsableKey(azureEndpoint) &&
@@ -104,7 +178,7 @@ export async function callAI(options: AICallOptions): Promise<string> {
     }
   }
 
-  // 2. Use OpenRouter when configured.
+  // 3. Use OpenRouter when configured.
   if (hasUsableKey(openRouterKey)) {
     try {
       const res = await fetch(OPENROUTER_API_URL, {
@@ -143,7 +217,7 @@ export async function callAI(options: AICallOptions): Promise<string> {
     }
   }
 
-  // 3. Try Gemini API if GEMINI_API_KEY is provided.
+  // 4. Try Gemini API if GEMINI_API_KEY is provided.
   if (geminiKey && !geminiKey.includes('your-key')) {
     try {
       const model = getGeminiModel();
@@ -175,34 +249,6 @@ export async function callAI(options: AICallOptions): Promise<string> {
       }
     } catch (e: any) {
       console.warn('[Gemini Call Warning]:', e.message);
-    }
-  }
-
-  // 4. Try Anthropic if ANTHROPIC_API_KEY is available
-  if (anthropicKey && !anthropicKey.includes('your-key')) {
-    try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': anthropicKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: 'claude-3-5-sonnet-20241022',
-          max_tokens: options.maxTokens ?? 1024,
-          messages: options.messages,
-          system: options.system,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const text = data.content?.[0]?.text;
-        if (text) return text.trim();
-      }
-    } catch (e: any) {
-      console.warn('[Anthropic Warning]:', e.message);
     }
   }
 

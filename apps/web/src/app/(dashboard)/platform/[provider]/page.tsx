@@ -63,6 +63,7 @@ interface Suggestion {
   scheduledAt: string;
   characterCount: number;
   imageUrl?: string;
+  imageAltText?: string;
 }
 
 interface Post {
@@ -76,6 +77,10 @@ interface Post {
   platformPostId?: string | null;
   platformPostUrl?: string | null;
   metadata?: {
+    trend?: string | null;
+    category?: string | null;
+    imageUrl?: string | null;
+    imageAltText?: string | null;
     linkedInUrl?: string | null;
     linkedInPostId?: string | null;
     likes?: number | null;
@@ -668,6 +673,7 @@ export default function PlatformPage() {
                   </div>
 
                   <PostBody content={post.content} />
+                  <PostMedia post={post} />
 
                   <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3">
                     <span className="font-mono text-[10px] text-muted-foreground">
@@ -735,6 +741,7 @@ export default function PlatformPage() {
                     </div>
 
                     <PostBody content={post.content} />
+                  <PostMedia post={post} />
 
                     {post.engagementSync && post.engagementSync.status !== 'ok' ? (
                       <InlineNotice
@@ -814,6 +821,7 @@ export default function PlatformPage() {
                   </div>
 
                   <PostBody content={post.content} />
+                  <PostMedia post={post} />
 
                   <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/70 pt-3">
                     <span className="font-mono text-[10px] text-muted-foreground">
@@ -1021,6 +1029,29 @@ function PostBody({ content }: { content: string }) {
   );
 }
 
+/** The topic card carried on an approved post, once it has left suggestions. */
+function PostMedia({ post }: { post: Post }) {
+  const url = post.metadata?.imageUrl;
+  if (!url) return null;
+
+  return (
+    <figure className="space-y-1.5">
+      <div className="overflow-hidden rounded-xl border border-border">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt={post.metadata?.imageAltText || `Topic card for ${post.metadata?.trend || 'this post'}`}
+          className="aspect-[1200/630] w-full object-cover"
+        />
+      </div>
+      <figcaption className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+        <ImageIcon className="h-3 w-3" />
+        Claude-designed card · attached to LinkedIn
+      </figcaption>
+    </figure>
+  );
+}
+
 function EngagementStat({
   icon,
   value,
@@ -1147,18 +1178,22 @@ function SuggestionCard({
           />
 
           {suggestion.imageUrl ? (
-            <div className="group relative overflow-hidden rounded-xl border border-border">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={suggestion.imageUrl}
-                alt={suggestion.trend}
-                className="h-52 w-full object-cover transition-transform duration-500 group-hover:scale-105"
-              />
-              <span className="glass absolute bottom-2.5 left-2.5 flex items-center gap-1.5 rounded-lg px-3 py-1 text-[10px] font-semibold">
-                <ImageIcon className="h-3.5 w-3.5 text-primary" />
-                Topic visual attached
-              </span>
-            </div>
+            <figure className="space-y-1.5">
+              <div className="overflow-hidden rounded-xl border border-border">
+                {/* Generated card, sized to its own 1200×630 ratio so the
+                    title is never cropped. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={suggestion.imageUrl}
+                  alt={suggestion.imageAltText || `Topic card for ${suggestion.trend}`}
+                  className="aspect-[1200/630] w-full object-cover"
+                />
+              </div>
+              <figcaption className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
+                <ImageIcon className="h-3 w-3" />
+                Claude-designed card · attached to LinkedIn
+              </figcaption>
+            </figure>
           ) : null}
 
           <div className="flex flex-wrap items-center justify-between gap-2 pt-1">

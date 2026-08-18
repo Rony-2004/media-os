@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { getAuthUser, unauthorizedResponse } from '@/lib/auth-guard';
+import { getLinkedInPostImage, publishLinkedInPost } from '@/lib/linkedin/publish';
+import { PublishError } from '@/lib/scheduler';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authUser = await getAuthUser(req);
@@ -9,10 +11,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const { id } = await params;
   const post = await prisma.post.findFirst({ where: { id, userId: authUser.userId } });
   if (!post) {
-    return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'Post not found' } }, { status: 404 });
+    return NextResponse.json(
+      { error: { code: 'NOT_FOUND', message: 'Post not found' } },
+      { status: 404 },
+    );
   }
 
-  // 1. Fetch user's active LinkedIn account
+  if (post.status === 'published') {
+    return NextResponse.json(
+      { error: { code: 'ALREADY_PUBLISHED', message: 'This post has already been published.' } },
+      { status: 409 },
+    );
+  }
+
   const account = await prisma.socialAccount.findFirst({
     where: { userId: authUser.userId, provider: 'linkedin', status: 'active' },
   });
@@ -22,111 +33,70 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       {
         error: {
           code: 'ACCOUNT_NOT_CONNECTED',
-          message: 'No active LinkedIn account connected. Please connect LinkedIn from the Accounts page first.',
+          message:
+            'No active LinkedIn account connected. Connect LinkedIn from the Accounts page first.',
         },
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
-  let linkedInPostId: string | null = null;
-  let linkedInUrl: string | null = null;
+  // Fail fast when the stored grant predates the publishing scope, rather than
+  // spending a round trip to be told 403.
+  const grantedScopes = account.scopes?.split(/[\s,]+/).filter(Boolean) ?? [];
+  if (grantedScopes.length > 0 && !grantedScopes.includes('w_member_social')) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'MISSING_PUBLISH_SCOPE',
+          message:
+            'This LinkedIn connection was authorized without the w_member_social permission, so it cannot post. Reconnect the account from the Accounts page to grant it.',
+        },
+      },
+      { status: 403 },
+    );
+  }
 
   try {
-    // Step A: Get profile sub / author Urn
-    const profileRes = await fetch('https://api.linkedin.com/v2/userinfo', {
-      headers: { Authorization: `Bearer ${account.accessToken}` },
+    const outcome = await publishLinkedInPost(account.accessToken, post.content, {
+      image: getLinkedInPostImage(post),
     });
 
-    if (!profileRes.ok) {
-      return NextResponse.json(
-        {
-          error: {
-            code: 'LINKEDIN_AUTH_EXPIRED',
-            message: 'LinkedIn token expired or unauthorized. Please reconnect your account in Accounts.',
-          },
-        },
-        { status: 401 }
-      );
-    }
-
-    const profile = await profileRes.json();
-    const authorUrn = `urn:li:person:${profile.sub}`;
-
-    // Step B: Post to LinkedIn ugcPosts API
-    const postBody = {
-      author: authorUrn,
-      lifecycleState: 'PUBLISHED',
-      specificContent: {
-        'com.linkedin.ugc.ShareContent': {
-          shareCommentary: {
-            text: post.content,
-          },
-          shareMediaCategory: 'NONE',
+    const updated = await prisma.post.update({
+      where: { id },
+      data: {
+        status: 'published',
+        publishedAt: new Date(),
+        errorMessage: null,
+        platformPostId: outcome.platformPostId,
+        platformPostUrl: outcome.platformPostUrl,
+        metadata: {
+          ...(typeof post.metadata === 'object' && post.metadata !== null
+            ? (post.metadata as object)
+            : {}),
+          linkedInPostId: outcome.platformPostId,
+          linkedInUrl: outcome.platformPostUrl,
         },
       },
-      visibility: {
-        'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC',
-      },
-    };
-
-    const postRes = await fetch('https://api.linkedin.com/v2/ugcPosts', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${account.accessToken}`,
-        'Content-Type': 'application/json',
-        'X-Restli-Protocol-Version': '2.0.0',
-      },
-      body: JSON.stringify(postBody),
     });
 
-    if (postRes.ok) {
-      const resData = await postRes.json().catch(() => ({}));
-      linkedInPostId = resData.id || postRes.headers.get('x-restli-id');
-      if (linkedInPostId) {
-        linkedInUrl = `https://www.linkedin.com/feed/update/${linkedInPostId}`;
-      }
-    } else {
-      const errText = await postRes.text();
-      console.warn('[LinkedIn API Post Error]:', postRes.status, errText);
+    return NextResponse.json({ data: updated });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : 'The post could not be published to LinkedIn.';
+    console.warn('[LinkedIn Publish]', message);
 
-      return NextResponse.json(
-        {
-          error: {
-            code: 'LINKEDIN_PUBLISH_FAILED',
-            message: `LinkedIn API Error (${postRes.status}): ${errText}`,
-          },
-        },
-        { status: 400 }
-      );
-    }
-  } catch (e: any) {
-    console.error('[LinkedIn Publishing Exception]:', e);
+    await prisma.post.update({ where: { id }, data: { errorMessage: message } });
+
     return NextResponse.json(
-      { error: { code: 'LINKEDIN_ERROR', message: e.message } },
-      { status: 500 }
+      {
+        error: {
+          code: 'LINKEDIN_PUBLISH_FAILED',
+          message,
+          details: { retryable: error instanceof PublishError ? error.retryable : true },
+        },
+      },
+      { status: 502 },
     );
   }
-
-  // 2. Update post in PostgreSQL DB upon verified LinkedIn publication
-  const updated = await prisma.post.update({
-    where: { id },
-    data: {
-      status: 'published',
-      publishedAt: new Date(),
-      platformPostId: linkedInPostId,
-      platformPostUrl: linkedInUrl,
-      metadata: {
-        ...(typeof post.metadata === 'object' && post.metadata !== null ? (post.metadata as object) : {}),
-        linkedInPostId,
-        linkedInUrl,
-        likes: 0,
-        comments: 0,
-        views: 0,
-        hasRealStats: false,
-      },
-    },
-  });
-
-  return NextResponse.json({ data: updated });
 }

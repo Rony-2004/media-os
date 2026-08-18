@@ -10,7 +10,10 @@ import {
   postIntervalDays,
   type BrandVoiceConfig,
 } from '@/lib/brand-voice';
+import { generateClaudePostImage } from '@/lib/topic-card';
 import { z } from 'zod';
+
+export const runtime = 'nodejs';
 
 interface TrendingTopic {
   id: string;
@@ -19,34 +22,12 @@ interface TrendingTopic {
   velocity: string;
   source: string;
   url?: string;
-  imageUrl?: string;
 }
 
-// ─── Crisp Topic-Matched Technical Visual Assets ─────────────────────────────
+/** How many drafts one refresh produces. */
+const SUGGESTION_COUNT = 5;
 
-const TOPIC_VISUALS = {
-  security: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=1200&q=80', // Digital security lock & encryption
-  ai: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80', // Neural network AI mesh
-  database: 'https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&w=1200&q=80', // High-performance server cluster
-  systems: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80', // Microchip hardware architecture
-};
-
-function getMatchingImageForTopic(trend: string, category: string): string {
-  const lower = (trend + ' ' + category).toLowerCase();
-
-  if (lower.includes('security') || lower.includes('bcrypt') || lower.includes('hash') || lower.includes('auth')) {
-    return TOPIC_VISUALS.security;
-  }
-  if (lower.includes('ai') || lower.includes('claude') || lower.includes('anthropic') || lower.includes('llm') || lower.includes('model')) {
-    return TOPIC_VISUALS.ai;
-  }
-  if (lower.includes('postgres') || lower.includes('database') || lower.includes('sql') || lower.includes('mvcc')) {
-    return TOPIC_VISUALS.database;
-  }
-  return TOPIC_VISUALS.systems;
-}
-
-// ─── Generate Humanized Software Engineering Topics ─────────────────────────
+// ─── Topic generation ───────────────────────────────────────────────────────
 
 async function fetchTopics(config: BrandVoiceConfig): Promise<TrendingTopic[]> {
   const focus =
@@ -59,11 +40,13 @@ async function fetchTopics(config: BrandVoiceConfig): Promise<TrendingTopic[]> {
       ? `\nNever use any of these words in a title: ${config.avoidWords.join(', ')}.`
       : '';
 
-  const prompt = `List 3 specific, concrete topics suitable for professional posts.
+  const prompt = `List ${SUGGESTION_COUNT} specific, concrete topics suitable for professional posts.
 
 ${focus}${banned}
 
-Format as a JSON array of 3 objects:
+Each topic must be clearly distinct from the others — no two on the same angle.
+
+Format as a JSON array of ${SUGGESTION_COUNT} objects:
 [
   { "trend": "Specific Topic Title", "category": "one of the subject areas above", "source": "Engineering Breakdown", "velocity": "rising|peaking|emerging" },
   ...
@@ -75,7 +58,7 @@ Return ONLY the JSON array.`;
     system:
       'You return only valid JSON arrays of specific, non-clickbait topic titles. No maths notation.',
     messages: [{ role: 'user', content: prompt }],
-    maxTokens: 400,
+    maxTokens: 700,
   });
 
   const topicSchema = z.object({
@@ -85,12 +68,13 @@ Return ONLY the JSON array.`;
     source: z.string().trim().min(1),
   });
   const cleaned = raw.replace(/```json|```/g, '').trim();
-  const parsed = z.array(topicSchema).min(3).parse(JSON.parse(cleaned));
+  // Accept a short list rather than failing the whole refresh — one topic fewer
+  // is better than no suggestions at all.
+  const parsed = z.array(topicSchema).min(1).parse(JSON.parse(cleaned));
 
-  return parsed.slice(0, 3).map((topic, index) => ({
+  return parsed.slice(0, SUGGESTION_COUNT).map((topic, index) => ({
     id: `eng-${Date.now()}-${index}`,
     ...topic,
-    imageUrl: getMatchingImageForTopic(topic.trend, topic.category),
   }));
 }
 
@@ -132,6 +116,11 @@ export async function GET(req: NextRequest) {
     const suggestions = await Promise.all(
       topics.map(async (topic, i) => {
         const content = await generatePostForTrend(topic, config);
+        const imageUrl = await generateClaudePostImage({
+          trend: topic.trend,
+          category: topic.category,
+          content,
+        });
 
         // Space slots by the configured cadence rather than a fixed one a day.
         const scheduledAt = new Date();
@@ -145,7 +134,8 @@ export async function GET(req: NextRequest) {
           velocity: topic.velocity,
           source: topic.source,
           url: topic.url,
-          imageUrl: topic.imageUrl || getMatchingImageForTopic(topic.trend, topic.category),
+          imageUrl,
+          imageAltText: `System design diagram for ${topic.trend}`,
           content,
           platform: 'linkedin',
           scheduledAt: scheduledAt.toISOString(),
@@ -178,7 +168,38 @@ export async function POST(req: NextRequest) {
   const authUser = await getAuthUser(req);
   if (!authUser) return unauthorizedResponse();
 
-  const { action, suggestions } = await req.json();
+  const suggestionSchema = z.object({
+    id: z.string().min(1),
+    trend: z.string().trim().min(1),
+    category: z.string().trim().min(1),
+    velocity: z.string().trim().min(1),
+    source: z.string().trim().min(1),
+    content: z.string().trim().min(1).max(25000),
+    platform: z.literal('linkedin'),
+    scheduledAt: z.string().datetime(),
+    imageUrl: z.string().startsWith('data:image/png;base64,'),
+    imageAltText: z.string().trim().min(1).max(4086),
+  });
+  const approvalSchema = z.object({
+    action: z.enum(['approve_all', 'approve_one', 'reject_one']),
+    suggestions: z.array(suggestionSchema).min(1),
+  });
+  const parsed = approvalSchema.safeParse(await req.json());
+  if (!parsed.success) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Every approved AI suggestion must include its generated PNG image.',
+          details: parsed.error.issues,
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  const { action, suggestions } = parsed.data;
+  if (action === 'reject_one') return NextResponse.json({ data: { ok: true } });
 
   const account = await prisma.socialAccount.findFirst({
     where: { userId: authUser.userId, provider: 'linkedin', status: 'active' },
@@ -193,7 +214,7 @@ export async function POST(req: NextRequest) {
 
   if (action === 'approve_all') {
     const posts = await Promise.all(
-      suggestions.map((s: any) =>
+      suggestions.map((s) =>
         prisma.post.create({
           data: {
             userId: authUser.userId,
@@ -203,7 +224,14 @@ export async function POST(req: NextRequest) {
             status: 'scheduled',
             scheduledAt: new Date(s.scheduledAt),
             aiGenerated: true,
-            metadata: { trend: s.trend, source: s.source, category: s.category, imageUrl: s.imageUrl },
+            mediaUrls: [s.imageUrl],
+            metadata: {
+              trend: s.trend,
+              source: s.source,
+              category: s.category,
+              imageUrl: s.imageUrl,
+              imageAltText: s.imageAltText,
+            },
           },
         })
       )
@@ -222,7 +250,14 @@ export async function POST(req: NextRequest) {
         status: 'scheduled',
         scheduledAt: new Date(s.scheduledAt),
         aiGenerated: true,
-        metadata: { trend: s.trend, source: s.source, category: s.category, imageUrl: s.imageUrl },
+        mediaUrls: [s.imageUrl],
+        metadata: {
+          trend: s.trend,
+          source: s.source,
+          category: s.category,
+          imageUrl: s.imageUrl,
+          imageAltText: s.imageAltText,
+        },
       },
     });
     return NextResponse.json({ data: { post } });
