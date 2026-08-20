@@ -28,19 +28,22 @@ import {
   Send,
   Sparkles,
   ThumbsUp,
+  Trash2,
   UserCheck,
   Wand2,
   X,
 } from 'lucide-react';
 import { readApiResponse } from '@/lib/api-response';
 import { useBrandVoice, useUpdateBrandVoice } from '@/hooks/use-brand-voice';
+import { AiGenerationLoader } from '@/components/ai-generation-loader';
 import { LinkedInMark } from '@/components/brand/marks';
 import { Button } from '@/components/ui/button';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Modal } from '@/components/ui/modal';
 import { Tabs, TabPanel } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/field';
+import { TimePicker } from '@/components/ui/time-picker';
 import {
-  CardSkeleton,
   EmptyState,
   InlineNotice,
   LiveDot,
@@ -49,6 +52,14 @@ import {
   StatusBadge,
 } from '@/components/ui/product';
 import { cn } from '@/lib/utils';
+import {
+  buildScheduledPostPayload,
+  combineScheduleDateTime,
+  defaultScheduleValue,
+  splitScheduleDateTime,
+  toDateTimeLocalValue,
+} from '@/lib/post-workspace';
+import { buildNewPostPolishRequest } from '@/lib/suggestion-polish';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -154,6 +165,26 @@ async function approveSuggestions(payload: {
   return (await res.json()).data;
 }
 
+async function polishSuggestion(payload: {
+  suggestion: Pick<Suggestion, 'trend' | 'content'>;
+  prompt: string;
+}): Promise<string> {
+  const res = await fetch('/api/ai/suggestions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ action: 'polish', ...payload }),
+  });
+  const response = await readApiResponse<{
+    data?: { content?: string };
+    error?: { message?: string };
+  }>(res);
+  if (!res.ok || !response.data?.content) {
+    throw new Error(response.error?.message || 'The post could not be polished.');
+  }
+  return response.data.content;
+}
+
 // ─── Platform meta ───────────────────────────────────────────────────────────
 
 const PLATFORM_META: Record<string, { name: string; color: string; logo: React.ReactNode }> = {
@@ -181,8 +212,15 @@ export default function PlatformPage() {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState<Record<string, string>>({});
+  const [polishTarget, setPolishTarget] = useState<Suggestion | null>(null);
+  const [polishPrompt, setPolishPrompt] = useState('');
   const [showNewPostModal, setShowNewPostModal] = useState(false);
   const [newPostContent, setNewPostContent] = useState('');
+  const [newPostScheduledAt, setNewPostScheduledAt] = useState(() => defaultScheduleValue());
+  const [editingSchedulePost, setEditingSchedulePost] = useState<Post | null>(null);
+  const [editingScheduledAt, setEditingScheduledAt] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<Post | null>(null);
+  const [postActionError, setPostActionError] = useState<string | null>(null);
   const [isPolishing, setIsPolishing] = useState(false);
   const [editingReply, setEditingReply] = useState<Record<string, string>>({});
   const [sendingReplyId, setSendingReplyId] = useState<string | null>(null);
@@ -195,6 +233,7 @@ export default function PlatformPage() {
   const autoApprove = brandVoice?.autoApprove ?? false;
   // Suggestion ids already handed to the agent, so a re-render never queues twice.
   const autoApproved = useRef<Set<string>>(new Set());
+  const [autoApprovedIds, setAutoApprovedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const requestedTab = new URLSearchParams(window.location.search).get('tab');
@@ -252,6 +291,24 @@ export default function PlatformPage() {
     },
   });
 
+  const polishMutation = useMutation({
+    mutationFn: polishSuggestion,
+    onSuccess: (content) => {
+      const suggestionId = polishTarget?.id;
+      if (!suggestionId) return;
+      setEditingContent((previous) => ({ ...previous, [suggestionId]: content }));
+      setExpanded(suggestionId);
+      setPolishTarget(null);
+      setPolishPrompt('');
+      setPostActionError(null);
+    },
+    onError: (error) => {
+      setPostActionError(
+        error instanceof Error ? error.message : 'The post could not be polished.',
+      );
+    },
+  });
+
   const publishMutation = useMutation({
     mutationFn: async (postId: string) => {
       setPublishError(null);
@@ -294,6 +351,90 @@ export default function PlatformPage() {
     },
   });
 
+  const createPostMutation = useMutation({
+    mutationFn: async () => {
+      setPostActionError(null);
+      const payload = buildScheduledPostPayload(
+        newPostContent,
+        provider,
+        newPostScheduledAt,
+      );
+      const res = await fetch('/api/posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error?.message || 'The post could not be scheduled.');
+      return data.data as Post;
+    },
+    onSuccess: () => {
+      setShowNewPostModal(false);
+      setNewPostContent('');
+      setNewPostScheduledAt(defaultScheduleValue());
+      setActiveTab('scheduled');
+      queryClient.invalidateQueries({ queryKey: ['posts', provider] });
+      queryClient.invalidateQueries({ queryKey: ['analytics-overview'] });
+    },
+    onError: (error) => {
+      setPostActionError(error instanceof Error ? error.message : 'The post could not be scheduled.');
+    },
+  });
+
+  const updateScheduleMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingSchedulePost) throw new Error('Choose a post to edit.');
+      const date = new Date(editingScheduledAt);
+      if (Number.isNaN(date.getTime())) throw new Error('Choose a valid schedule date.');
+
+      setPostActionError(null);
+      const res = await fetch(`/api/posts/${editingSchedulePost.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ scheduledAt: date.toISOString() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error?.message || 'The schedule could not be updated.');
+      return data.data as Post;
+    },
+    onSuccess: () => {
+      setEditingSchedulePost(null);
+      setEditingScheduledAt('');
+      queryClient.invalidateQueries({ queryKey: ['posts', provider] });
+      queryClient.invalidateQueries({ queryKey: ['analytics-overview'] });
+    },
+    onError: (error) => {
+      setPostActionError(error instanceof Error ? error.message : 'The schedule could not be updated.');
+    },
+  });
+
+  const deletePostMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      setPostActionError(null);
+      const res = await fetch(`/api/posts/${postId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error?.message || 'The scheduled post could not be deleted.');
+      }
+      return postId;
+    },
+    onSuccess: () => {
+      setDeleteTarget(null);
+      queryClient.invalidateQueries({ queryKey: ['posts', provider] });
+      queryClient.invalidateQueries({ queryKey: ['analytics-overview'] });
+    },
+    onError: (error) => {
+      setPostActionError(
+        error instanceof Error ? error.message : 'The scheduled post could not be deleted.',
+      );
+    },
+  });
+
   const visibleSuggestions = suggestions.filter((s) => !dismissed.has(s.id));
   const scheduledPosts = posts.filter((p) => p.status === 'scheduled');
   const publishedPosts = posts.filter((p) => p.status === 'published');
@@ -303,8 +444,8 @@ export default function PlatformPage() {
   );
   const syncIsLive = publishedPosts.length > 0 && syncFailures.length === 0;
 
-  // In agent mode the queue is filled without a review step. Publishing itself
-  // still requires an explicit action — nothing reaches LinkedIn unattended.
+  // Agent mode queues suggestions automatically but keeps the cards visible so
+  // the user can see exactly what the agent approved.
   useEffect(() => {
     if (!autoApprove || approve.isPending) return;
 
@@ -312,15 +453,27 @@ export default function PlatformPage() {
     if (pending.length === 0) return;
 
     pending.forEach((s) => autoApproved.current.add(s.id));
-    approve.mutate({
-      action: 'approve_all',
-      suggestions: pending.map((s) => ({ ...s, content: editingContent[s.id] || s.content })),
-    });
-    setDismissed((prev) => {
-      const next = new Set(prev);
-      pending.forEach((s) => next.add(s.id));
+    setAutoApprovedIds((previous) => {
+      const next = new Set(previous);
+      pending.forEach((suggestion) => next.add(suggestion.id));
       return next;
     });
+    approve.mutate(
+      {
+        action: 'approve_all',
+        suggestions: pending.map((s) => ({ ...s, content: editingContent[s.id] || s.content })),
+      },
+      {
+        onError: () => {
+          setAutoApprovedIds((previous) => {
+            const next = new Set(previous);
+            pending.forEach((suggestion) => next.delete(suggestion.id));
+            return next;
+          });
+          setPostActionError('Automatic approval failed. You can approve the suggestions manually.');
+        },
+      },
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoApprove, visibleSuggestions, approve.isPending]);
 
@@ -396,13 +549,21 @@ export default function PlatformPage() {
     }
   };
 
-  const handleAiPolish = () => {
+  const handleAiPolish = async () => {
     if (!newPostContent.trim()) return;
     setIsPolishing(true);
-    setTimeout(() => {
-      setNewPostContent((prev) => `${prev.trim()}\n\n#SoftwareEngineering #Backend #SystemDesign`);
+    setPostActionError(null);
+    try {
+      const { suggestion, prompt } = buildNewPostPolishRequest(newPostContent);
+      const content = await polishSuggestion({ suggestion, prompt });
+      setNewPostContent(content);
+    } catch (error) {
+      setPostActionError(
+        error instanceof Error ? error.message : 'The post could not be polished.',
+      );
+    } finally {
       setIsPolishing(false);
-    }, 600);
+    }
   };
 
   return (
@@ -509,6 +670,26 @@ export default function PlatformPage() {
         </InlineNotice>
       ) : null}
 
+      {postActionError ? (
+        <InlineNotice
+          title="Post action failed"
+          tone="danger"
+          icon={<AlertCircle className="h-4 w-4" />}
+          action={
+            <button
+              type="button"
+              onClick={() => setPostActionError(null)}
+              aria-label="Dismiss"
+              className="grid h-7 w-7 place-items-center rounded-lg text-destructive transition-colors hover:bg-destructive/15"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          }
+        >
+          {postActionError}
+        </InlineNotice>
+      ) : null}
+
       {/* ── Metrics ──────────────────────────────────────────────────── */}
       <div className="stagger grid grid-cols-2 gap-3 sm:grid-cols-4">
         <MetricCard
@@ -567,12 +748,12 @@ export default function PlatformPage() {
         <TabPanel className="space-y-3">
           {autoApprove ? (
             <InlineNotice title="Agent approval is on" tone="info" icon={<Bot className="h-4 w-4" />}>
-              New drafts move straight to the scheduled queue without appearing here. Publishing
-              still needs an explicit action — switch to Human to review each draft first.
+              Suggestions remain visible here and are automatically added to the scheduled queue.
+              Scheduled posts publish automatically when their time arrives.
             </InlineNotice>
           ) : null}
           {suggestionsLoading ? (
-            <CardSkeleton count={3} />
+            <AiGenerationLoader />
           ) : suggestionsFailed ? (
             <EmptyState
               icon={<AlertCircle className="h-6 w-6" />}
@@ -621,12 +802,19 @@ export default function PlatformPage() {
                   expanded={expanded === suggestion.id}
                   content={editingContent[suggestion.id] ?? suggestion.content}
                   pending={approve.isPending}
+                  polishing={polishMutation.isPending && polishTarget?.id === suggestion.id}
+                  autoApproved={autoApprove && autoApprovedIds.has(suggestion.id)}
                   onToggle={() =>
                     setExpanded(expanded === suggestion.id ? null : suggestion.id)
                   }
                   onContentChange={(value) =>
                     setEditingContent((prev) => ({ ...prev, [suggestion.id]: value }))
                   }
+                  onPolish={() => {
+                    setPolishTarget(suggestion);
+                    setPolishPrompt('');
+                    setPostActionError(null);
+                  }}
                   onApprove={() => handleApproveOne(suggestion)}
                   onDismiss={() => handleDismiss(suggestion.id)}
                   onCollapse={() => setExpanded(null)}
@@ -680,8 +868,31 @@ export default function PlatformPage() {
                       {post.content.length} characters
                     </span>
                     <div className="flex items-center gap-2">
-                      <Button variant="secondary" size="sm" icon={<CalendarIcon className="h-3.5 w-3.5" />}>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setEditingSchedulePost(post);
+                          setEditingScheduledAt(
+                            post.scheduledAt
+                              ? toDateTimeLocalValue(post.scheduledAt)
+                              : defaultScheduleValue(),
+                          );
+                        }}
+                        icon={<CalendarIcon className="h-3.5 w-3.5" />}
+                      >
                         Edit schedule
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => setDeleteTarget(post)}
+                        loading={
+                          deletePostMutation.isPending && deletePostMutation.variables === post.id
+                        }
+                        icon={<Trash2 className="h-3.5 w-3.5" />}
+                      >
+                        Delete
                       </Button>
                       <Button
                         size="sm"
@@ -911,6 +1122,164 @@ export default function PlatformPage() {
         </TabPanel>
       ) : null}
 
+      {/* ── Delete confirmation ─────────────────────────────────────── */}
+      <Modal
+        open={Boolean(deleteTarget)}
+        onClose={() => {
+          if (!deletePostMutation.isPending) setDeleteTarget(null);
+        }}
+        title="Delete scheduled post?"
+        description="This removes the post from your publishing queue. This action cannot be undone."
+        icon={<Trash2 className="h-4 w-4" />}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={deletePostMutation.isPending}
+              onClick={() => setDeleteTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              loading={deletePostMutation.isPending}
+              disabled={!deleteTarget}
+              onClick={() => {
+                if (deleteTarget) deletePostMutation.mutate(deleteTarget.id);
+              }}
+              icon={<Trash2 className="h-3.5 w-3.5" />}
+            >
+              Delete post
+            </Button>
+          </>
+        }
+      >
+        <div className="rounded-xl border border-border bg-muted/25 p-4">
+          <p className="line-clamp-4 text-xs leading-6 text-muted-foreground">
+            {deleteTarget?.content}
+          </p>
+          {deleteTarget?.scheduledAt ? (
+            <p className="mt-3 flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
+              <Clock className="h-3 w-3" />
+              Scheduled for {formatDateTime(deleteTarget.scheduledAt)}
+            </p>
+          ) : null}
+        </div>
+      </Modal>
+
+      {/* ── Suggestion polish prompt ────────────────────────────────── */}
+      <Modal
+        open={Boolean(polishTarget)}
+        onClose={() => {
+          if (polishMutation.isPending) return;
+          setPolishTarget(null);
+          setPolishPrompt('');
+        }}
+        title="Polish this suggestion"
+        description="Tell the AI exactly how you want this post rewritten. You can review the result before approving it."
+        icon={<Wand2 className="h-4 w-4" />}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={polishMutation.isPending}
+              onClick={() => {
+                setPolishTarget(null);
+                setPolishPrompt('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!polishTarget || !polishPrompt.trim()}
+              loading={polishMutation.isPending}
+              onClick={() => {
+                if (!polishTarget) return;
+                polishMutation.mutate({
+                  suggestion: {
+                    trend: polishTarget.trend,
+                    content: editingContent[polishTarget.id] ?? polishTarget.content,
+                  },
+                  prompt: polishPrompt,
+                });
+              }}
+              icon={<Wand2 className="h-3.5 w-3.5" />}
+            >
+              Polish post
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          <label htmlFor="suggestion-polish-prompt" className="text-xs font-bold">
+            How should the post be polished?
+          </label>
+          <Textarea
+            id="suggestion-polish-prompt"
+            value={polishPrompt}
+            onChange={(event) => setPolishPrompt(event.target.value)}
+            placeholder="For example: Make the hook stronger, shorten the middle, and add one practical example."
+            rows={5}
+            maxLength={1000}
+            autoFocus
+            className="min-h-28 text-[13px]"
+          />
+          <div className="text-right font-mono text-[10px] text-muted-foreground">
+            {polishPrompt.length} / 1000
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Schedule editor ──────────────────────────────────────────── */}
+      <Modal
+        open={Boolean(editingSchedulePost)}
+        onClose={() => {
+          setEditingSchedulePost(null);
+          setEditingScheduledAt('');
+        }}
+        title="Edit publishing schedule"
+        description="Choose when this post should be published automatically."
+        icon={<CalendarIcon className="h-4 w-4" />}
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setEditingSchedulePost(null);
+                setEditingScheduledAt('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => updateScheduleMutation.mutate()}
+              loading={updateScheduleMutation.isPending}
+              disabled={!editingScheduledAt}
+              icon={<CalendarIcon className="h-3.5 w-3.5" />}
+            >
+              Save schedule
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-2">
+          <div className="text-xs font-bold">
+            Publishing date and time
+          </div>
+          <ScheduleDateTimeFields
+            id="edit-scheduled-at"
+            value={editingScheduledAt}
+            onChange={setEditingScheduledAt}
+          />
+        </div>
+      </Modal>
+
       {/* ── New post modal ───────────────────────────────────────────── */}
       <Modal
         open={showNewPostModal}
@@ -925,11 +1294,9 @@ export default function PlatformPage() {
             </Button>
             <Button
               size="sm"
-              disabled={!newPostContent.trim()}
-              onClick={() => {
-                setShowNewPostModal(false);
-                setNewPostContent('');
-              }}
+              disabled={!newPostContent.trim() || !newPostScheduledAt}
+              onClick={() => createPostMutation.mutate()}
+              loading={createPostMutation.isPending}
               icon={<CalendarIcon className="h-3.5 w-3.5" />}
             >
               Schedule post
@@ -943,15 +1310,28 @@ export default function PlatformPage() {
             onChange={(event) => setNewPostContent(event.target.value)}
             placeholder="What software engineering insight do you want to share?"
             rows={8}
+            maxLength={3000}
+            autoFocus
             className="min-h-40 text-[13px]"
           />
+          <div className="space-y-2">
+            <div className="text-xs font-bold">
+              Publishing date and time
+            </div>
+            <ScheduleDateTimeFields
+              id="new-post-scheduled-at"
+              value={newPostScheduledAt}
+              onChange={setNewPostScheduledAt}
+            />
+          </div>
           <div className="flex items-center justify-between gap-3">
             <Button
               variant="secondary"
               size="sm"
               onClick={handleAiPolish}
               disabled={isPolishing || !newPostContent.trim()}
-              icon={<Wand2 className={cn('h-3.5 w-3.5 text-primary', isPolishing && 'animate-spin')} />}
+              loading={isPolishing}
+              icon={<Wand2 className="h-3.5 w-3.5 text-primary" />}
             >
               AI polish
             </Button>
@@ -966,6 +1346,49 @@ export default function PlatformPage() {
 }
 
 // ─── Pieces ──────────────────────────────────────────────────────────────────
+
+function ScheduleDateTimeFields({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const { date, time } = splitScheduleDateTime(value);
+  const today = splitScheduleDateTime(toDateTimeLocalValue(new Date())).date;
+
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_minmax(8rem,0.55fr)] gap-3">
+      <div className="space-y-1.5">
+        <label htmlFor={`${id}-date`} className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Date
+        </label>
+        <DatePicker
+          id={`${id}-date`}
+          value={date}
+          min={today}
+          onChange={(nextDate) =>
+            onChange(combineScheduleDateTime(nextDate, time || '09:00'))
+          }
+        />
+      </div>
+      <div className="space-y-1.5">
+        <label htmlFor={`${id}-time`} className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Time
+        </label>
+        <TimePicker
+          id={`${id}-time`}
+          value={time}
+          onChange={(nextTime) =>
+            onChange(combineScheduleDateTime(date || today, nextTime))
+          }
+        />
+      </div>
+    </div>
+  );
+}
 
 /**
  * Two-state switch between human approval and agent approval. The choice is
@@ -1075,8 +1498,11 @@ function SuggestionCard({
   expanded,
   content,
   pending,
+  polishing,
+  autoApproved,
   onToggle,
   onContentChange,
+  onPolish,
   onApprove,
   onDismiss,
   onCollapse,
@@ -1085,8 +1511,11 @@ function SuggestionCard({
   expanded: boolean;
   content: string;
   pending: boolean;
+  polishing: boolean;
+  autoApproved: boolean;
   onToggle: () => void;
   onContentChange: (value: string) => void;
+  onPolish: () => void;
   onApprove: () => void;
   onDismiss: () => void;
   onCollapse: () => void;
@@ -1131,24 +1560,41 @@ function SuggestionCard({
 
           <div className="flex items-center gap-1.5" onClick={(event) => event.stopPropagation()}>
             <Button
-              variant="success"
+              variant="secondary"
+              size="xs"
+              onClick={onPolish}
+              loading={polishing}
+              disabled={pending || autoApproved}
+              icon={<Wand2 className="h-3.5 w-3.5" />}
+              title={
+                autoApproved
+                  ? 'This suggestion has already been approved and scheduled'
+                  : 'Polish with your own instructions'
+              }
+            >
+              Polish
+            </Button>
+            <Button
+              variant={autoApproved ? 'secondary' : 'success'}
               size="xs"
               onClick={onApprove}
-              disabled={pending}
-              icon={<Check className="h-3.5 w-3.5" />}
-              title="Approve and schedule"
+              disabled={pending || autoApproved}
+              icon={autoApproved ? <CheckCheck className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
+              title={autoApproved ? 'Automatically approved and scheduled' : 'Approve and schedule'}
             >
-              Approve
+              {autoApproved ? 'Auto-approved' : 'Approve'}
             </Button>
-            <button
-              type="button"
-              onClick={onDismiss}
-              title="Dismiss suggestion"
-              aria-label="Dismiss suggestion"
-              className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
+            {!autoApproved ? (
+              <button
+                type="button"
+                onClick={onDismiss}
+                title="Dismiss suggestion"
+                aria-label="Dismiss suggestion"
+                className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : null}
           </div>
         </div>
       </div>
@@ -1211,13 +1657,24 @@ function SuggestionCard({
                 Collapse
               </Button>
               <Button
-                variant="success"
+                variant="secondary"
+                size="sm"
+                onClick={onPolish}
+                loading={polishing}
+                disabled={pending || autoApproved}
+                icon={<Wand2 className="h-3.5 w-3.5" />}
+              >
+                Polish
+              </Button>
+              <Button
+                variant={autoApproved ? 'secondary' : 'success'}
                 size="sm"
                 onClick={onApprove}
-                loading={pending}
-                icon={<Check className="h-3.5 w-3.5" />}
+                loading={pending && !autoApproved}
+                disabled={autoApproved}
+                icon={autoApproved ? <CheckCheck className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
               >
-                Approve & schedule
+                {autoApproved ? 'Auto-approved & scheduled' : 'Approve & schedule'}
               </Button>
             </div>
           </div>

@@ -11,6 +11,10 @@ import {
   type BrandVoiceConfig,
 } from '@/lib/brand-voice';
 import { generateClaudePostImage } from '@/lib/topic-card';
+import {
+  buildSuggestionPolishPrompt,
+  polishSuggestionRequestSchema,
+} from '@/lib/suggestion-polish';
 import { z } from 'zod';
 
 export const runtime = 'nodejs';
@@ -168,6 +172,56 @@ export async function POST(req: NextRequest) {
   const authUser = await getAuthUser(req);
   if (!authUser) return unauthorizedResponse();
 
+  const body: unknown = await req.json();
+  const polishRequest = polishSuggestionRequestSchema.safeParse(body);
+  if (polishRequest.success) {
+    try {
+      const config = await getBrandVoice(authUser.userId);
+      const content = await callAI({
+        system: buildSystemPrompt(config),
+        messages: [
+          { role: 'user', content: buildSuggestionPolishPrompt(polishRequest.data) },
+        ],
+        maxTokens: 1400,
+        temperature: 0.45,
+      });
+
+      return NextResponse.json({ data: { content: content.slice(0, 25000) } });
+    } catch (error: unknown) {
+      console.error(
+        '[AI Suggestion Polish]',
+        error instanceof Error ? error.message : 'Polishing failed',
+      );
+      return NextResponse.json(
+        {
+          error: {
+            code: 'AI_POLISH_FAILED',
+            message: 'The post could not be polished. Please try again.',
+          },
+        },
+        { status: 502 },
+      );
+    }
+  }
+
+  if (
+    typeof body === 'object' &&
+    body !== null &&
+    'action' in body &&
+    body.action === 'polish'
+  ) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Enter polishing instructions before continuing.',
+          details: polishRequest.error.issues,
+        },
+      },
+      { status: 400 },
+    );
+  }
+
   const suggestionSchema = z.object({
     id: z.string().min(1),
     trend: z.string().trim().min(1),
@@ -184,7 +238,7 @@ export async function POST(req: NextRequest) {
     action: z.enum(['approve_all', 'approve_one', 'reject_one']),
     suggestions: z.array(suggestionSchema).min(1),
   });
-  const parsed = approvalSchema.safeParse(await req.json());
+  const parsed = approvalSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       {

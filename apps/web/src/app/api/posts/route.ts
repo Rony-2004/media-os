@@ -226,12 +226,34 @@ export async function POST(req: NextRequest) {
 
   const { content, platform, socialAccountId, status, scheduledAt } = parsed.data;
 
+  const account = await prisma.socialAccount.findFirst({
+    where: {
+      userId: authUser.userId,
+      provider: platform,
+      status: 'active',
+      ...(socialAccountId ? { id: socialAccountId } : {}),
+    },
+    select: { id: true },
+  });
+
+  if (status === 'scheduled' && !account) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'ACCOUNT_NOT_CONNECTED',
+          message: `Connect an active ${platform} account before scheduling this post.`,
+        },
+      },
+      { status: 400 },
+    );
+  }
+
   const post = await prisma.post.create({
     data: {
       userId: authUser.userId,
       content,
       platform,
-      socialAccountId: socialAccountId || null,
+      socialAccountId: account?.id ?? null,
       status,
       scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
     },
