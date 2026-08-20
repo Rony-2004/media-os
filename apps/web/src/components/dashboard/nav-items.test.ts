@@ -15,15 +15,21 @@ function activeLabelsFor(pathname: string, tabParam: string | null = null) {
   return allItems.filter((item) => isNavItemActive(item, pathname, activeTab)).map((i) => i.label);
 }
 
-test('only the matching tab highlights on a shared platform route', () => {
-  assert.deepEqual(activeLabelsFor('/platform/linkedin', 'published'), ['Posts']);
-  assert.deepEqual(activeLabelsFor('/platform/linkedin', 'drafts'), ['Drafts']);
-  assert.deepEqual(activeLabelsFor('/platform/linkedin', 'scheduled'), ['Calendar']);
-  assert.deepEqual(activeLabelsFor('/platform/linkedin', 'suggestions'), ['AI Writer']);
+test('the platform route highlights exactly one item, whatever the tab', () => {
+  // The nav now carries a single entry for the whole platform workspace, so
+  // every tab resolves to it rather than lighting up several siblings.
+  for (const tab of [null, 'published', 'drafts', 'scheduled', 'suggestions', 'comments']) {
+    assert.deepEqual(activeLabelsFor('/platform/linkedin', tab), ['Posts'], `tab=${tab}`);
+  }
 });
 
-test('a bare platform URL highlights the tab the page actually opens on', () => {
-  assert.deepEqual(activeLabelsFor('/platform/linkedin'), ['AI Writer']);
+test('matchTab still discriminates when an item declares one', () => {
+  // No shipped item uses matchTab today, but the mechanism is what stops a
+  // future tab-per-item nav from highlighting all of them at once.
+  const draftsItem = { ...primaryItems[1], label: 'Drafts', matchTab: 'drafts' };
+  assert.equal(isNavItemActive(draftsItem, '/platform/linkedin', 'drafts'), true);
+  assert.equal(isNavItemActive(draftsItem, '/platform/linkedin', 'published'), false);
+  assert.equal(isNavItemActive(draftsItem, '/platform/linkedin', null), false);
 });
 
 test('at most one item is ever active across every route', () => {
@@ -52,8 +58,8 @@ test('in-page anchors never claim the active state', () => {
   assert.deepEqual(activeLabelsFor('/dashboard'), ['Dashboard']);
 });
 
-test('a tab with no sidebar entry leaves the group unhighlighted', () => {
-  assert.deepEqual(activeLabelsFor('/platform/linkedin', 'comments'), []);
+test('an unknown tab still resolves to the platform item', () => {
+  assert.deepEqual(activeLabelsFor('/platform/linkedin', 'not-a-real-tab'), ['Posts']);
 });
 
 test('unrelated routes do not highlight by prefix', () => {

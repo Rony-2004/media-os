@@ -28,6 +28,7 @@ import {
   Skeleton,
   StatusBadge,
 } from '@/components/ui/product';
+import { GrowthPanel } from '@/components/dashboard/growth-panel';
 import { cn } from '@/lib/utils';
 
 const PLATFORM_META: Record<string, { color: string; label: string; logo: React.ReactNode }> = {
@@ -275,6 +276,8 @@ export default function DashboardPage() {
           </div>
         </section>
       ) : null}
+
+      {hasAccounts ? <GrowthPanel /> : null}
 
       {/* ── Quick actions ────────────────────────────────────────────── */}
       <section className="space-y-4">

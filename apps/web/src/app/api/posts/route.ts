@@ -9,6 +9,7 @@ import {
   fetchLinkedInSocialMetadata,
 } from '@/lib/linkedin/client';
 import { mergeSuccessfulEngagement, readCachedEngagement } from '@/lib/linkedin/sync';
+import { recordPostMetric } from '@/lib/growth/repository';
 import { deduplicatePosts, fingerprintPostContent } from '@/lib/post-dedupe';
 
 const createPostSchema = z.object({
@@ -114,6 +115,12 @@ export async function GET(req: NextRequest) {
           data: { metadata: syncedMetadata as Prisma.InputJsonValue },
         })
         .catch(() => undefined);
+
+      // Feed the growth engine. Best-effort: a metrics write must never break
+      // the post list.
+      await recordPostMetric(post.id, result.data.reactions, result.data.comments).catch(
+        () => undefined,
+      );
 
       return {
         ...post,

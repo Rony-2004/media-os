@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidateTag, unstable_cache } from 'next/cache';
+import { SUGGESTIONS_CACHE_KEY, suggestionsTag } from '@/lib/suggestions-cache';
 import { prisma } from '@/lib/db';
 import { Prisma } from '@prisma/client';
 import { getAuthUser, unauthorizedResponse } from '@/lib/auth-guard';
@@ -12,6 +14,8 @@ import {
   type BrandVoiceConfig,
 } from '@/lib/brand-voice';
 import { generateClaudePostImage } from '@/lib/topic-card';
+import { getGrowthInsights } from '@/lib/growth/repository';
+import { buildGrowthDirectives, pickSlots } from '@/lib/growth/apply';
 import {
   buildSuggestionPolishPrompt,
   polishSuggestionRequestSchema,
@@ -89,6 +93,7 @@ Return ONLY the JSON array.`;
 async function generatePostForTrend(
   topic: TrendingTopic,
   config: BrandVoiceConfig,
+  growthDirectives: string,
 ): Promise<string> {
   const [, maxChars] = lengthRange[config.postLength];
 
@@ -97,7 +102,9 @@ Source: ${topic.source}
 
 Apply the voice exactly as specified:
 ${buildVoiceDirectives(config)}
-
+${growthDirectives ? `
+${growthDirectives}
+` : ''}
 Return only the post text — no preamble, no title, no surrounding quotes.`;
 
   return callAI({
@@ -110,28 +117,32 @@ Return only the post text — no preamble, no title, no surrounding quotes.`;
 
 // ─── GET /api/ai/suggestions ────────────────────────────────────────────────
 
-export async function GET(req: NextRequest) {
-  const authUser = await getAuthUser(req);
-  if (!authUser) return unauthorizedResponse();
-
-  try {
-    const config = await getBrandVoice(authUser.userId);
+/**
+ * Generating a batch costs five model calls plus five image generations and
+ * takes 15-40s, so the result is cached per user and reused across refreshes.
+ * The user regenerates deliberately via ?refresh=1.
+ */
+async function generateSuggestions(userId: string) {
+    const config = await getBrandVoice(userId);
+    // What has actually worked for this account, if there is enough history.
+    const insights = await getGrowthInsights(userId);
+    const growthDirectives = buildGrowthDirectives(insights);
     const topics = await fetchTopics(config);
     const intervalDays = postIntervalDays(config.postFrequency);
+    const slots = pickSlots(insights, topics.length, intervalDays);
 
     const suggestions = await Promise.all(
       topics.map(async (topic, i) => {
-        const content = await generatePostForTrend(topic, config);
+        const content = await generatePostForTrend(topic, config, growthDirectives);
         const imageUrl = await generateClaudePostImage({
           trend: topic.trend,
           category: topic.category,
           content,
         });
 
-        // Space slots by the configured cadence rather than a fixed one a day.
-        const scheduledAt = new Date();
-        scheduledAt.setDate(scheduledAt.getDate() + intervalDays * (i + 1));
-        scheduledAt.setHours(9, 0, 0, 0);
+        // Cadence from the brand voice; hour from whatever has actually
+        // performed for this account, falling back to 09:00 when unproven.
+        const scheduledAt = slots[i] ?? new Date();
 
         return {
           id: topic.id,
@@ -151,7 +162,7 @@ export async function GET(req: NextRequest) {
     );
 
     const existingPosts = await prisma.post.findMany({
-      where: { userId: authUser.userId, platform: 'linkedin' },
+      where: { userId: userId, platform: 'linkedin' },
       select: { content: true, contentFingerprint: true },
     });
     const seenFingerprints = new Set(
@@ -164,7 +175,26 @@ export async function GET(req: NextRequest) {
       return true;
     });
 
-    return NextResponse.json({ data: { suggestions: uniqueSuggestions } });
+  return uniqueSuggestions;
+}
+
+export async function GET(req: NextRequest) {
+  const authUser = await getAuthUser(req);
+  if (!authUser) return unauthorizedResponse();
+
+  const refresh = req.nextUrl.searchParams.get('refresh') === '1';
+
+  try {
+    // An explicit refresh drops the cached batch first so the next read misses.
+    if (refresh) revalidateTag(suggestionsTag(authUser.userId));
+
+    const suggestions = await unstable_cache(
+      () => generateSuggestions(authUser.userId),
+      [SUGGESTIONS_CACHE_KEY, authUser.userId],
+      { revalidate: 60 * 60, tags: [suggestionsTag(authUser.userId)] },
+    )();
+
+    return NextResponse.json({ data: { suggestions, cached: !refresh } });
   } catch (error: unknown) {
     console.error(
       '[AI Suggestions]',

@@ -173,6 +173,7 @@ model Post {
 
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   socialAccount SocialAccount? @relation(fields: [socialAccountId], references: [id])
+  metrics       PostMetric[]
 
   @@index([userId])
   @@index([status])
@@ -180,4 +181,26 @@ model Post {
   @@index([scheduledAt])
   @@unique([userId, platform, contentFingerprint])
   @@map("posts")
+}
+
+// ============================================================
+// Growth engine
+// ============================================================
+
+/// A point-in-time snapshot of a published post's verified engagement.
+///
+/// Engagement is stored as history rather than overwritten: correlating post
+/// traits against outcomes is impossible from a single mutable value. Rows are
+/// only written when a sync returns numbers that actually changed.
+model PostMetric {
+  id         String   @id @default(cuid())
+  postId     String
+  reactions  Int
+  comments   Int
+  capturedAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, capturedAt])
+  @@map("post_metrics")
 }

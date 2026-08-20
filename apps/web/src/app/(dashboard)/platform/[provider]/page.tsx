@@ -133,8 +133,10 @@ type TabId = 'suggestions' | 'scheduled' | 'published' | 'drafts' | 'comments';
 
 // ─── API calls ───────────────────────────────────────────────────────────────
 
-async function fetchSuggestions(): Promise<Suggestion[]> {
-  const res = await fetch('/api/ai/suggestions', { credentials: 'include' });
+async function fetchSuggestions(refresh = false): Promise<Suggestion[]> {
+  const res = await fetch(`/api/ai/suggestions${refresh ? '?refresh=1' : ''}`, {
+    credentials: 'include',
+  });
   const payload = await readApiResponse<{
     data?: { suggestions?: Suggestion[] };
     error?: { message?: string };
@@ -257,10 +259,18 @@ export default function PlatformPage() {
     isFetching: suggestionsFetching,
   } = useQuery({
     queryKey: ['suggestions'],
-    queryFn: fetchSuggestions,
-    staleTime: 0,
-    refetchOnMount: 'always',
+    queryFn: () => fetchSuggestions(),
+    // The route caches per user, so a remount or refresh reuses the batch
+    // instead of paying for generation again.
+    staleTime: 60 * 60 * 1000,
+    gcTime: 60 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
+
+  // Explicit user action: drop the server cache and generate a fresh batch.
+  const regenerate = () =>
+    queryClient.fetchQuery({ queryKey: ['suggestions'], queryFn: () => fetchSuggestions(true) });
 
   const { data: posts = [] } = useQuery({
     queryKey: ['posts', provider],
@@ -766,7 +776,7 @@ export default function PlatformPage() {
               }
               action={
                 <Button
-                  onClick={() => refetchSuggestions()}
+                  onClick={() => regenerate()}
                   loading={suggestionsFetching}
                   icon={<RefreshCw className="h-3.5 w-3.5" />}
                 >
@@ -782,7 +792,7 @@ export default function PlatformPage() {
               action={
                 <>
                   <Button
-                    onClick={() => refetchSuggestions()}
+                    onClick={() => regenerate()}
                     loading={suggestionsFetching}
                     icon={<RefreshCw className="h-3.5 w-3.5" />}
                   >
