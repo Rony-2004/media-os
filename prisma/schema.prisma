@@ -153,6 +153,7 @@ model Post {
   userId          String
   socialAccountId String?
   content         String
+  contentFingerprint String?
   platform        String
   status          String    @default("draft")
   scheduledAt     DateTime?
@@ -177,5 +178,6 @@ model Post {
   @@index([status])
   @@index([userId, status])
   @@index([scheduledAt])
+  @@unique([userId, platform, contentFingerprint])
   @@map("posts")
 }

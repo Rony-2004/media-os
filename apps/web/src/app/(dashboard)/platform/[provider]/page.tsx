@@ -630,6 +630,7 @@ export default function PlatformPage() {
                   size="sm"
                   onClick={handleApproveAll}
                   loading={approve.isPending}
+                  disabled={approve.isPending}
                   icon={<CheckCheck className="h-3.5 w-3.5" />}
                   className="flex-1 sm:flex-initial"
                 >
@@ -898,6 +899,7 @@ export default function PlatformPage() {
                         size="sm"
                         onClick={() => publishMutation.mutate(post.id)}
                         loading={publishMutation.isPending && publishMutation.variables === post.id}
+                        disabled={publishMutation.isPending}
                         icon={<Send className="h-3.5 w-3.5" />}
                       >
                         Publish now
@@ -1054,6 +1056,7 @@ export default function PlatformPage() {
                         size="sm"
                         onClick={() => publishMutation.mutate(post.id)}
                         loading={publishMutation.isPending && publishMutation.variables === post.id}
+                        disabled={publishMutation.isPending}
                         icon={<Send className="h-3.5 w-3.5" />}
                       >
                         Publish now
@@ -1294,7 +1297,9 @@ export default function PlatformPage() {
             </Button>
             <Button
               size="sm"
-              disabled={!newPostContent.trim() || !newPostScheduledAt}
+              disabled={
+                !newPostContent.trim() || !newPostScheduledAt || createPostMutation.isPending
+              }
               onClick={() => createPostMutation.mutate()}
               loading={createPostMutation.isPending}
               icon={<CalendarIcon className="h-3.5 w-3.5" />}
@@ -1532,27 +1537,27 @@ function SuggestionCard({
             onToggle();
           }
         }}
-        className="flex cursor-pointer select-none items-start justify-between gap-3 p-4 transition-colors hover:bg-muted/25"
+        className="flex cursor-pointer select-none flex-col items-start justify-between gap-3 p-4 transition-colors hover:bg-muted/25 sm:flex-row"
       >
-        <div className="min-w-0 flex-1">
-          <div className="mb-1.5 flex flex-wrap items-center gap-2">
+        <div className="w-full min-w-0 flex-1 sm:w-auto">
+          <div className="mb-1.5 flex min-w-0 flex-wrap items-center gap-2">
             <ChevronDown
               className={cn(
                 'h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-300',
                 expanded && 'rotate-180 text-primary',
               )}
             />
-            <span className="truncate text-[13px] font-bold">{suggestion.trend}</span>
+            <span className="min-w-0 flex-1 truncate text-[13px] font-bold">{suggestion.trend}</span>
             <StatusBadge tone="primary">{suggestion.category}</StatusBadge>
             <span className="font-mono text-[10px] text-muted-foreground">via {suggestion.source}</span>
           </div>
 
           {!expanded ? (
-            <p className="ml-6 line-clamp-2 text-xs leading-6 text-muted-foreground">{content}</p>
+            <p className="ml-6 break-words line-clamp-2 text-xs leading-6 text-muted-foreground">{content}</p>
           ) : null}
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto">
           <span className="hidden items-center gap-1.5 rounded-lg border border-border/70 bg-muted/40 px-2.5 py-1 font-mono text-[10px] text-muted-foreground sm:flex">
             <Clock className="h-3 w-3" />
             {formatDateTime(suggestion.scheduledAt)}
@@ -1671,7 +1676,7 @@ function SuggestionCard({
                 size="sm"
                 onClick={onApprove}
                 loading={pending && !autoApproved}
-                disabled={autoApproved}
+                disabled={pending || autoApproved}
                 icon={autoApproved ? <CheckCheck className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
               >
                 {autoApproved ? 'Auto-approved & scheduled' : 'Approve & schedule'}

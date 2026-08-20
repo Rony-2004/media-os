@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getAuthUser, unauthorizedResponse } from '@/lib/auth-guard';
 import { z } from 'zod';
@@ -9,6 +9,7 @@ import {
   fetchLinkedInSocialMetadata,
 } from '@/lib/linkedin/client';
 import { mergeSuccessfulEngagement, readCachedEngagement } from '@/lib/linkedin/sync';
+import { deduplicatePosts, fingerprintPostContent } from '@/lib/post-dedupe';
 
 const createPostSchema = z.object({
   content: z.string().min(1).max(25000),
@@ -122,6 +123,10 @@ export async function GET(req: NextRequest) {
     })
   );
 
+  // Older rows may predate content fingerprints. Deduplicate the response as
+  // a defensive read path so historical duplicates are not shown twice.
+  const deduplicatedPosts = deduplicatePosts(updatedPosts);
+
   if (
     account?.accessToken &&
     statuses.includes('published') &&
@@ -132,7 +137,7 @@ export async function GET(req: NextRequest) {
 
     if (remotePostsResult.ok) {
       const localUrns = new Set(
-        updatedPosts
+        deduplicatedPosts
           .flatMap((post) => {
             const metadata = asMetadata(post.metadata);
             const urn = [
@@ -198,7 +203,7 @@ export async function GET(req: NextRequest) {
       );
 
       return NextResponse.json({
-        data: [...updatedPosts, ...remoteOnlyPosts].sort((a, b) => {
+        data: deduplicatePosts([...deduplicatedPosts, ...remoteOnlyPosts]).sort((a, b) => {
           const aTime = new Date(a.publishedAt ?? a.createdAt ?? 0).getTime();
           const bTime = new Date(b.publishedAt ?? b.createdAt ?? 0).getTime();
           return bTime - aTime;
@@ -207,7 +212,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ data: updatedPosts });
+  return NextResponse.json({ data: deduplicatedPosts });
 }
 
 export async function POST(req: NextRequest) {
@@ -248,16 +253,55 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const post = await prisma.post.create({
-    data: {
-      userId: authUser.userId,
-      content,
-      platform,
-      socialAccountId: account?.id ?? null,
-      status,
-      scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
-    },
+  const contentFingerprint = fingerprintPostContent(content);
+  const existingPosts = await prisma.post.findMany({
+    where: { userId: authUser.userId, platform },
+    select: { content: true, contentFingerprint: true },
   });
+  const duplicateExists = existingPosts.some(
+    (existingPost) =>
+      existingPost.contentFingerprint === contentFingerprint ||
+      fingerprintPostContent(existingPost.content) === contentFingerprint,
+  );
 
-  return NextResponse.json({ data: post }, { status: 201 });
+  if (duplicateExists) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'DUPLICATE_POST',
+          message: 'A matching post already exists for this platform.',
+        },
+      },
+      { status: 409 },
+    );
+  }
+
+  try {
+    const post = await prisma.post.create({
+      data: {
+        userId: authUser.userId,
+        content,
+        contentFingerprint,
+        platform,
+        socialAccountId: account?.id ?? null,
+        status,
+        scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+      },
+    });
+
+    return NextResponse.json({ data: post }, { status: 201 });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'DUPLICATE_POST',
+            message: 'A matching post already exists for this platform.',
+          },
+        },
+        { status: 409 },
+      );
+    }
+    throw error;
+  }
 }

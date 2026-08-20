@@ -57,6 +57,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
 
+  const previousStatus = post.status;
+  const claim = await prisma.post.updateMany({
+    where: {
+      id,
+      userId: authUser.userId,
+      status: { in: ['draft', 'scheduled', 'failed'] },
+    },
+    data: { status: 'publishing' },
+  });
+
+  if (claim.count !== 1) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'PUBLISH_IN_PROGRESS',
+          message: 'This post is already being published or is no longer publishable.',
+        },
+      },
+      { status: 409 },
+    );
+  }
+
   try {
     const outcome = await publishLinkedInPost(account.accessToken, post.content, {
       image: getLinkedInPostImage(post),
@@ -86,7 +108,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       error instanceof Error ? error.message : 'The post could not be published to LinkedIn.';
     console.warn('[LinkedIn Publish]', message);
 
-    await prisma.post.update({ where: { id }, data: { errorMessage: message } });
+    await prisma.post.update({
+      where: { id },
+      data: { status: previousStatus, errorMessage: message },
+    });
 
     return NextResponse.json(
       {

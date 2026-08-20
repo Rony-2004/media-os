@@ -3,55 +3,60 @@ import { hashSync } from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
-const TEST_USER = {
-  name: 'Test User',
-  email: 'test@connectus.dev',
-  password: 'Password123',
-};
+const TEST_USERS = [
+  {
+    name: 'Baishali',
+    email: 'baishalimukherjee2004@gmail.com',
+    password: 'Baishali1234',
+  },
+  {
+    name: 'Mir Saif Ali',
+    email: 'mirsaifali@gmail.com',
+    password: 'Mir1234',
+  },
+  {
+    name: 'Akash Laha',
+    email: 'akashlaha48@gmail.com',
+    password: 'Akash1234',
+  },
+] as const;
 
-async function seedUser() {
-  console.log('\n[SEED] Creating test user...\n');
+async function seedUser(testUser: (typeof TEST_USERS)[number]) {
+  console.log(`\n[SEED] Creating ${testUser.email}...\n`);
+
+  const passwordHash = hashSync(testUser.password, 12);
 
   const existing = await prisma.user.findUnique({
-    where: { email: TEST_USER.email },
+    where: { email: testUser.email },
   });
 
-  if (existing) {
-    const credentialAccount = await prisma.account.findFirst({
-      where: { userId: existing.id, providerId: 'credential' },
-    });
-
-    if (!credentialAccount) {
-      await prisma.account.create({
+  const user = existing
+    ? await prisma.user.update({
+        where: { id: existing.id },
         data: {
-          id: `credential_${existing.id}`,
-          accountId: existing.id,
-          providerId: 'credential',
-          userId: existing.id,
-          password: hashSync(TEST_USER.password, 12),
+          name: testUser.name,
+          emailVerified: true,
+          isActive: true,
+          isBlocked: false,
+        },
+      })
+    : await prisma.user.create({
+        data: {
+          name: testUser.name,
+          email: testUser.email,
+          emailVerified: true,
         },
       });
-    }
 
-    console.log('[SEED] User already exists, skipping.\n');
-    console.log(`  Email:    ${TEST_USER.email}`);
-    console.log(`  Password: ${TEST_USER.password}`);
-    console.log(`  Status:   Email verified, ready to login\n`);
-    return;
-  }
-
-  const passwordHash = hashSync(TEST_USER.password, 12);
-
-  const user = await prisma.user.create({
-    data: {
-      name: TEST_USER.name,
-      email: TEST_USER.email,
-      emailVerified: true,
+  await prisma.account.upsert({
+    where: {
+      providerId_accountId: {
+        providerId: 'credential',
+        accountId: user.id,
+      },
     },
-  });
-
-  await prisma.account.create({
-    data: {
+    update: { password: passwordHash },
+    create: {
       id: `credential_${user.id}`,
       accountId: user.id,
       providerId: 'credential',
@@ -60,14 +65,14 @@ async function seedUser() {
     },
   });
 
-  console.log('[SEED] Test user created!\n');
+  console.log(existing ? '[SEED] Test user updated!\n' : '[SEED] Test user created!\n');
   console.log(`  ID:       ${user.id}`);
-  console.log(`  Email:    ${TEST_USER.email}`);
-  console.log(`  Password: ${TEST_USER.password}`);
+  console.log(`  Email:    ${testUser.email}`);
+  console.log(`  Password: ${testUser.password}`);
   console.log(`  Status:   Email verified, ready to login\n`);
 }
 
-seedUser()
+Promise.all(TEST_USERS.map(seedUser))
   .catch((e) => {
     console.error('[SEED] Error:', e);
     process.exit(1);

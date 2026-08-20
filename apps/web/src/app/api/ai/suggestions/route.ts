@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { Prisma } from '@prisma/client';
 import { getAuthUser, unauthorizedResponse } from '@/lib/auth-guard';
 import { callAI } from '@/lib/ai';
 import {
@@ -16,6 +17,7 @@ import {
   polishSuggestionRequestSchema,
 } from '@/lib/suggestion-polish';
 import { z } from 'zod';
+import { fingerprintPostContent } from '@/lib/post-dedupe';
 
 export const runtime = 'nodejs';
 
@@ -148,7 +150,21 @@ export async function GET(req: NextRequest) {
       }),
     );
 
-    return NextResponse.json({ data: { suggestions } });
+    const existingPosts = await prisma.post.findMany({
+      where: { userId: authUser.userId, platform: 'linkedin' },
+      select: { content: true, contentFingerprint: true },
+    });
+    const seenFingerprints = new Set(
+      existingPosts.map((post) => post.contentFingerprint || fingerprintPostContent(post.content)),
+    );
+    const uniqueSuggestions = suggestions.filter((suggestion) => {
+      const fingerprint = fingerprintPostContent(suggestion.content);
+      if (seenFingerprints.has(fingerprint)) return false;
+      seenFingerprints.add(fingerprint);
+      return true;
+    });
+
+    return NextResponse.json({ data: { suggestions: uniqueSuggestions } });
   } catch (error: unknown) {
     console.error(
       '[AI Suggestions]',
@@ -266,55 +282,100 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const existingPosts = await prisma.post.findMany({
+    where: { userId: authUser.userId, platform: 'linkedin' },
+    select: { content: true, contentFingerprint: true },
+  });
+  const seenFingerprints = new Set(
+    existingPosts.map((post) => post.contentFingerprint || fingerprintPostContent(post.content)),
+  );
+  const uniqueSuggestions = suggestions.filter((suggestion) => {
+    const fingerprint = fingerprintPostContent(suggestion.content);
+    if (seenFingerprints.has(fingerprint)) return false;
+    seenFingerprints.add(fingerprint);
+    return true;
+  });
+
   if (action === 'approve_all') {
-    const posts = await Promise.all(
-      suggestions.map((s) =>
-        prisma.post.create({
-          data: {
-            userId: authUser.userId,
-            socialAccountId: account.id,
-            content: s.content,
-            platform: 'linkedin',
-            status: 'scheduled',
-            scheduledAt: new Date(s.scheduledAt),
-            aiGenerated: true,
-            mediaUrls: [s.imageUrl],
-            metadata: {
-              trend: s.trend,
-              source: s.source,
-              category: s.category,
-              imageUrl: s.imageUrl,
-              imageAltText: s.imageAltText,
+    try {
+      const posts = await prisma.$transaction(
+        uniqueSuggestions.map((s) =>
+          prisma.post.create({
+            data: {
+              userId: authUser.userId,
+              socialAccountId: account.id,
+              content: s.content,
+              contentFingerprint: fingerprintPostContent(s.content),
+              platform: 'linkedin',
+              status: 'scheduled',
+              scheduledAt: new Date(s.scheduledAt),
+              aiGenerated: true,
+              mediaUrls: [s.imageUrl],
+              metadata: {
+                trend: s.trend,
+                source: s.source,
+                category: s.category,
+                imageUrl: s.imageUrl,
+                imageAltText: s.imageAltText,
+              },
             },
-          },
-        })
-      )
-    );
-    return NextResponse.json({ data: { approved: posts.length } });
+          }),
+        ),
+      );
+      return NextResponse.json({
+        data: { approved: posts.length, skipped: suggestions.length - posts.length },
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        return NextResponse.json(
+          { error: { code: 'DUPLICATE_POST', message: 'A matching post already exists for this platform.' } },
+          { status: 409 },
+        );
+      }
+      throw error;
+    }
   }
 
   if (action === 'approve_one') {
     const s = suggestions[0];
-    const post = await prisma.post.create({
-      data: {
-        userId: authUser.userId,
-        socialAccountId: account.id,
-        content: s.content,
-        platform: 'linkedin',
-        status: 'scheduled',
-        scheduledAt: new Date(s.scheduledAt),
-        aiGenerated: true,
-        mediaUrls: [s.imageUrl],
-        metadata: {
-          trend: s.trend,
-          source: s.source,
-          category: s.category,
-          imageUrl: s.imageUrl,
-          imageAltText: s.imageAltText,
+    if (!uniqueSuggestions.some((suggestion) => suggestion.id === s.id)) {
+      return NextResponse.json(
+        { error: { code: 'DUPLICATE_POST', message: 'A matching post already exists for this platform.' } },
+        { status: 409 },
+      );
+    }
+
+    try {
+      const post = await prisma.post.create({
+        data: {
+          userId: authUser.userId,
+          socialAccountId: account.id,
+          content: s.content,
+          contentFingerprint: fingerprintPostContent(s.content),
+          platform: 'linkedin',
+          status: 'scheduled',
+          scheduledAt: new Date(s.scheduledAt),
+          aiGenerated: true,
+          mediaUrls: [s.imageUrl],
+          metadata: {
+            trend: s.trend,
+            source: s.source,
+            category: s.category,
+            imageUrl: s.imageUrl,
+            imageAltText: s.imageAltText,
+          },
         },
-      },
-    });
-    return NextResponse.json({ data: { post } });
+      });
+      return NextResponse.json({ data: { post } });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        return NextResponse.json(
+          { error: { code: 'DUPLICATE_POST', message: 'A matching post already exists for this platform.' } },
+          { status: 409 },
+        );
+      }
+      throw error;
+    }
   }
 
   return NextResponse.json({ data: { ok: true } });

@@ -229,7 +229,7 @@ export default function NewPostPage() {
                 {showSchedule && scheduledAt ? (
                   <Button
                     onClick={() => save.mutate('scheduled')}
-                    disabled={!content.trim() || overLimit}
+                    disabled={!content.trim() || overLimit || save.isPending}
                     loading={save.isPending}
                     icon={<Clock className="h-4 w-4" />}
                   >

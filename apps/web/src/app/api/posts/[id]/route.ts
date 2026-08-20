@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { getAuthUser, unauthorizedResponse } from '@/lib/auth-guard';
 import { parsePostUpdate } from '@/lib/post-workspace';
+import { fingerprintPostContent } from '@/lib/post-dedupe';
 import { z } from 'zod';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -25,10 +27,39 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   try {
     const data = parsePostUpdate(await req.json());
+    const contentFingerprint = data.content
+      ? fingerprintPostContent(data.content)
+      : undefined;
+
+    if (contentFingerprint) {
+      const existingPosts = await prisma.post.findMany({
+        where: { userId: authUser.userId, platform: post.platform, NOT: { id } },
+        select: { content: true, contentFingerprint: true },
+      });
+      const duplicateExists = existingPosts.some(
+        (existingPost) =>
+          existingPost.contentFingerprint === contentFingerprint ||
+          fingerprintPostContent(existingPost.content) === contentFingerprint,
+      );
+
+      if (duplicateExists) {
+        return NextResponse.json(
+          {
+            error: {
+              code: 'DUPLICATE_POST',
+              message: 'A matching post already exists for this platform.',
+            },
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const updated = await prisma.post.update({
       where: { id },
       data: {
         ...data,
+        contentFingerprint,
         scheduledAt:
           data.scheduledAt === undefined
             ? undefined
@@ -50,6 +81,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           },
         },
         { status: 400 },
+      );
+    }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return NextResponse.json(
+        {
+          error: {
+            code: 'DUPLICATE_POST',
+            message: 'A matching post already exists for this platform.',
+          },
+        },
+        { status: 409 },
       );
     }
     throw error;

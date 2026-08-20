@@ -24,46 +24,39 @@ const TEST_USER = {
 async function seedUser() {
   console.log('\n[SEED] Creating test user...\n');
 
+  const passwordHash = await bcrypt.hash(TEST_USER.password, 12);
+
   const existing = await prisma.user.findUnique({
     where: { email: TEST_USER.email },
   });
 
-  if (existing) {
-    const credentialAccount = await prisma.account.findFirst({
-      where: { userId: existing.id, providerId: 'credential' },
-    });
-
-    if (!credentialAccount) {
-      await prisma.account.create({
+  const user = existing
+    ? await prisma.user.update({
+        where: { id: existing.id },
         data: {
-          id: `credential_${existing.id}`,
-          accountId: existing.id,
-          providerId: 'credential',
-          userId: existing.id,
-          password: await bcrypt.hash(TEST_USER.password, 12),
+          name: TEST_USER.name,
+          emailVerified: true,
+          isActive: true,
+          isBlocked: false,
+        },
+      })
+    : await prisma.user.create({
+        data: {
+          name: TEST_USER.name,
+          email: TEST_USER.email,
+          emailVerified: true,
         },
       });
-    }
 
-    console.log('[SEED] User already exists, skipping.\n');
-    console.log(`  Email:    ${TEST_USER.email}`);
-    console.log(`  Password: ${TEST_USER.password}`);
-    console.log(`  Status:   Email verified, ready to login\n`);
-    return;
-  }
-
-  const passwordHash = await bcrypt.hash(TEST_USER.password, 12);
-
-  const user = await prisma.user.create({
-    data: {
-      name: TEST_USER.name,
-      email: TEST_USER.email,
-      emailVerified: true,
+  await prisma.account.upsert({
+    where: {
+      providerId_accountId: {
+        providerId: 'credential',
+        accountId: user.id,
+      },
     },
-  });
-
-  await prisma.account.create({
-    data: {
+    update: { password: passwordHash },
+    create: {
       id: `credential_${user.id}`,
       accountId: user.id,
       providerId: 'credential',
@@ -72,7 +65,7 @@ async function seedUser() {
     },
   });
 
-  console.log('[SEED] Test user created successfully!\n');
+  console.log(existing ? '[SEED] Test user updated!\n' : '[SEED] Test user created successfully!\n');
   console.log(`  ID:       ${user.id}`);
   console.log(`  Email:    ${TEST_USER.email}`);
   console.log(`  Password: ${TEST_USER.password}`);
